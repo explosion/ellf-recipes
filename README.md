@@ -6,7 +6,7 @@
 
 This repository contains a collection of recipes for
 [Ellf](https://beta.ellf.ai), a platform for agentic NLP development. To use
-them you'll need a cluster and a license, since the recipes read and write
+them you'll need an Ellf cluster and a license, since the recipes read and write
 annotations that live on the cluster itself. For questions and bug reports,
 use `ellf support create` from your Ellf CLI.
 
@@ -50,19 +50,30 @@ python -m pytest tests -q
 
 ### Some things to try
 
-The recipes are yours to edit. Here are a few starting points.
+Start the notebook from the **Services** page in the web app and open it.
+Everything here happens in the browser, and your edits are saved to shared
+storage, so they outlive the service.
 
-- Open `dataset_explorer.py` and change **the query cell**. Pull a field out of
-  `meta`, count tokens, extract a score. Everything downstream recomputes.
-- Swap `mark_bar` for `mark_point` in a chart, or add a facet.
-- Wrap a chart in `mo.ui.altair_chart` and it becomes an *input*, so clicking
-  it filters the table below.
-- Add a cell that lists the assets on your cluster and reads one. The
-  `blank.py` starter shows how.
-- Add your own notebook to `ellf_notebook/notebooks/` and publish the package
-  again, so anyone can open it by filename.
-- Serve a finished analysis read-only with `--read-only` and hand it to people
-  who shouldn't be editing it.
+- Edit **the query cell**, the one that flattens each annotation into columns.
+  Pull a field out of `meta`, count tokens, extract a score. Every cell below
+  it recomputes.
+- Change a chart. Swap `mark_bar` for `mark_point`, or add a facet.
+- Wrap a chart in `mo.ui.altair_chart` and it turns into an input, so clicking
+  a bar filters the table below it.
+- Add a cell that lists the assets on your cluster and reads one.
+
+The creation form is worth playing with too.
+
+- Put a name you haven't used in **Notebook file** and you get a blank
+  notebook, already wired up, with working examples for datasets, assets and
+  jobs.
+- Reuse a **Workspace** name to pick up where a colleague left off, or pick a
+  new one for a clean slate.
+- Tick **Share as a read-only app** to hand a finished analysis to people who
+  shouldn't be editing it.
+
+To add a starter everyone can open, put your notebook in
+`ellf_notebook/notebooks/` and publish the package again.
 
 ## 🍳 Recipes
 
