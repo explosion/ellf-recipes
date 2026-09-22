@@ -75,9 +75,11 @@ form built from its signature. Open the URL as a logged-in project member and
 the notebook is there.
 
 Every recipe takes a `workspace`, which is the folder on shared storage that
-holds its notebooks, and a `read_only` switch that serves the notebook as an
-app rather than an editor. Reuse a workspace name to pick up where you or a
-colleague left off, or pick a new one for a clean slate.
+holds its notebooks. Reuse a workspace name to pick up where you or a
+colleague left off, or pick a new one for a clean slate. The two named
+recipes also take a `read_only` switch that serves their notebook as an app
+rather than an editor, which the workspace recipe has no use for because an
+app is one notebook.
 
 ## The recipes
 
@@ -89,7 +91,7 @@ than a generic notebook and then a filename.
 | --- | --- | --- |
 | `dataset_explorer` | a dataset | The annotations in it. Flatten, filter, chart, browse. The worked example, so start here. |
 | `training_results` | a model and a dataset | What the training run scored, then which examples the model gets wrong. Metrics come from the `kind="results"` asset the `train` recipe writes beside every pipeline, and the pipeline itself is what the error analysis runs. |
-| `marimo_notebook` | a dataset and a filename | The general case. Open a notebook somebody wrote in a workspace, or start a new one. A name that isn't there yet is created from a blank starter that shows how to reach datasets, assets and jobs. |
+| `marimo_notebook` | a dataset | The workspace itself. Opens on marimo's own home page, which lists the notebooks in the folder and can create a new one, so there is no filename to know in advance. A brand new workspace starts with one notebook showing how to reach datasets, assets and jobs. |
 
 The notebooks themselves ship in `notebooks/`. `seed_notebook` copies one into
 the workspace the first time it is opened and never overwrites it again, so a

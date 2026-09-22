@@ -1,36 +1,36 @@
-"""Service recipe: open any notebook in a workspace.
+"""Service recipe: a marimo workspace on your cluster.
 
-The general case, and the escape hatch. ``dataset_explorer`` and
-``training_results`` are named services for the notebooks that ship with this
-package, each asking for what its notebook actually needs. This one asks for a
-filename instead, which is how you reach a notebook somebody wrote in a
-workspace, and how you start a new one.
+The general case. ``dataset_explorer`` and ``training_results`` are named
+services that open one analysis and ask for what it needs. This one opens the
+*workspace* and lets marimo's own home page take it from there, listing the
+notebooks that are actually in the folder and offering to create a new one.
 
-A name that isn't already in the workspace is created from the blank starter,
-which is a working reference for reaching datasets, assets and jobs.
+That is deliberately not a form field. A dropdown built at publish time cannot
+see a notebook a colleague wrote last week, and a text box means knowing the
+filename before you start. The directory knows, so the directory decides.
+
+There is no read-only option here for the same reason. ``marimo run`` serves
+one notebook as an app, so it needs a filename. Handing over a finished
+analysis is what the named recipes are for.
 
 Avoid ``from __future__ import annotations`` here -- the recipe schema builder
 reads parameter annotations live via ``inspect.signature`` and expects the
 actual classes (``InputDataset``), not strings.
 """
 
-from ellf_recipes_sdk import BoolProps, InputDataset, TextProps, service_recipe
+from ellf_recipes_sdk import InputDataset, TextProps, service_recipe
 
 from ..launcher import MARIMO_PORT, launch
 from ..workspace import DEFAULT_WORKSPACE
-
-#: Anything not already in the workspace is seeded from this, so a filename
-#: nobody has used yet gives you a wired-up notebook rather than an empty file.
-DEFAULT_NOTEBOOK = "blank.py"
 
 
 @service_recipe(
     title="Marimo Notebook",
     description=(
-        "An editable marimo notebook running on your cluster, wired up to "
-        "Prodigy and the Ellf SDK. Open a notebook a colleague wrote, or "
-        "start a new one. Notebooks are saved to shared storage, so edits "
-        "outlive the service."
+        "A marimo workspace on your cluster, wired up to Prodigy and the Ellf "
+        "SDK. Opens on a list of the notebooks in the workspace, where you "
+        "can pick one or start a new one. Notebooks are saved to shared "
+        "storage, so edits outlive the service."
     ),
     port=MARIMO_PORT,
     healthcheck_path="/health",
@@ -40,28 +40,13 @@ DEFAULT_NOTEBOOK = "blank.py"
         "workspace": TextProps(
             title="Workspace",
             description=(
-                "Folder on shared storage holding this notebook and anything "
-                "it writes. Reuse a workspace name to pick up where you (or a "
-                "colleague) left off, or pick a new one for a clean slate."
+                "Folder on shared storage holding these notebooks and "
+                "anything they write. Reuse a workspace name to pick up where "
+                "you (or a colleague) left off, or pick a new one for a clean "
+                "slate. A new workspace starts with one notebook showing how "
+                "to reach datasets, assets and jobs."
             ),
             placeholder=DEFAULT_WORKSPACE,
-        ),
-        "notebook": TextProps(
-            title="Notebook file",
-            description=(
-                "Which .py file in the workspace to open. A name that isn't "
-                "there yet gives you a new notebook, already wired up, with "
-                "working examples for datasets, assets and jobs."
-            ),
-            placeholder=DEFAULT_NOTEBOOK,
-        ),
-        "read_only": BoolProps(
-            title="Share as a read-only app",
-            description=(
-                "Serve the notebook as an app instead of an editor, so "
-                "viewers can use the filters and read the code but not change "
-                "it. Use this to hand a finished analysis to a wider audience."
-            ),
         ),
     },
 )
@@ -69,25 +54,19 @@ def marimo_notebook(
     *,
     dataset: InputDataset,
     workspace: str = DEFAULT_WORKSPACE,
-    notebook: str = DEFAULT_NOTEBOOK,
-    read_only: bool = False,
 ) -> None:
-    """Open ``notebook`` in ``workspace`` and keep marimo running.
+    """Open ``workspace`` in marimo and keep it running.
 
     Args:
-        dataset: The dataset the notebook opens with. A starting point rather
-            than a binding, since the notebook can read any dataset on the
+        dataset: The dataset the notebooks open with. A starting point rather
+            than a binding, since a notebook can read any dataset on the
             cluster.
         workspace: Name of the folder on shared storage to keep notebooks in.
-        notebook: Filename to open within the workspace.
-        read_only: Serve as a read-only app rather than an editor.
 
     Returns:
         ``None``, because this is a port-mode service.
     """
     return launch(
-        notebook=notebook,
         workspace=workspace,
-        read_only=read_only,
         env_extra={"ELLF_MARIMO_DATASET": dataset.name},
     )

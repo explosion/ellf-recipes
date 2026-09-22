@@ -85,7 +85,7 @@ Long-running services people open in a browser, behind the Ellf auth.
 | ------ | ----------- |
 | [`dataset_explorer`](services/marimo) | A live view of one annotation dataset, computed on your cluster. Label distribution, throughput by annotator, and a browsable table, in a [marimo](https://marimo.io) notebook you can edit in the browser. |
 | [`training_results`](services/marimo) | Scores from a training run, and the examples the model gets wrong. Per-label F-scores, then the pipeline scored against a dataset so you can see its false positives and false negatives. |
-| [`marimo_notebook`](services/marimo) | Any notebook in a workspace. Open one a colleague wrote, or start a new one. Notebooks live on shared storage, so edits in the browser outlive the service. |
+| [`marimo_notebook`](services/marimo) | A marimo workspace on your cluster. Opens on a list of the notebooks in it, so you can pick one or start a new one. Notebooks live on shared storage, so edits in the browser outlive the service. |
 
 ## 📚 What's in a recipe
 

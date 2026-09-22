@@ -22,29 +22,49 @@ from .workspace import resolve_workspace, seed_notebook
 MARIMO_PORT = 2718
 
 
+#: Seeded into an otherwise empty workspace so its home page has something to
+#: open. A workspace that already holds notebooks is left alone.
+FALLBACK_NOTEBOOK = "blank.py"
+
+
 def launch(
     *,
-    notebook: str,
     workspace: str,
+    notebook: Optional[str] = None,
     read_only: bool = False,
     env_extra: Optional[Dict[str, str]] = None,
 ) -> None:
-    """Seed ``notebook`` into ``workspace`` and serve it with marimo.
+    """Serve ``workspace`` with marimo, or one notebook inside it.
 
     Args:
-        notebook: Filename to open within the workspace. Seeded from the
-            bundled starter of the same name on first use, and never
-            overwritten afterwards.
         workspace: Folder name on shared storage to keep notebooks in.
+        notebook: Filename to open within the workspace, seeded from the
+            bundled starter of the same name on first use and never
+            overwritten afterwards. ``None`` opens marimo's own home page
+            instead, which lists the workspace and can create new notebooks.
         read_only: Serve as an app (``marimo run``) rather than an editor.
+            Requires ``notebook``, since an app is one notebook.
         env_extra: Extra environment for the marimo process, which is how a
             recipe tells its notebook what it was started with.
 
     Returns:
         ``None``, because the marimo subprocess is the server.
+
+    Raises:
+        ValueError: If ``read_only`` is set without a ``notebook``.
     """
+    if read_only and notebook is None:
+        raise ValueError("read_only needs a notebook, because an app is one notebook")
+
     workspace_dir = resolve_workspace(workspace)
-    notebook_path = seed_notebook(workspace_dir, notebook)
+    if notebook is None:
+        notebook_path = None
+        # An empty workspace would otherwise open on an empty home page, with
+        # nothing to click and no hint of what this is wired up to.
+        if not any(workspace_dir.glob("*.py")):
+            seed_notebook(workspace_dir, FALLBACK_NOTEBOOK)
+    else:
+        notebook_path = seed_notebook(workspace_dir, notebook)
 
     # marimo runs as a fresh process, so config is handed over via env vars
     # rather than function arguments. Everything else in the environment is
@@ -76,7 +96,12 @@ def launch(
         # Answer prompts non-interactively: there is no terminal to answer them.
         "-y",
         "run" if read_only else "edit",
-        str(notebook_path),
+    ]
+    # No filename means the home page, which is how the general-purpose recipe
+    # lets people pick an existing notebook or start a new one.
+    if notebook_path is not None:
+        argv.append(str(notebook_path))
+    argv += [
         "--headless",
         "--host",
         "0.0.0.0",
