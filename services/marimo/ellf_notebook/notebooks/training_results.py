@@ -9,15 +9,15 @@ def _(mo):
     mo.md(r"""
     # Training results
 
-    What a training run scored, and — below — *which examples it gets wrong*.
+    What a training run scored, and below that, *which examples it gets wrong*.
 
-    The `train` recipe registers two assets for every run: the pipeline itself
-    (`kind="model"`) and a JSON payload of metrics beside it
-    (`kind="results"`, named `<model>.results`). This notebook reads the second
-    for the scores and loads the first to do the error analysis.
+    The service was started with a model, so this notebook reports on that one.
+    Its metrics come from the `kind="results"` asset the `train` recipe writes
+    beside every pipeline, and the pipeline itself is what the error analysis
+    runs.
 
-    The charts are clickable. Selecting a bar filters the tables underneath —
-    that is the point of doing this in a notebook rather than a dashboard.
+    The charts are clickable. Selecting a bar filters the tables underneath,
+    which is the point of doing this in a notebook rather than a dashboard.
     """)
     return
 
@@ -32,51 +32,43 @@ def _():
 
     client = data.pam_client()
     cluster = data.cluster_id()
-    return alt, client, cluster, data, mo, pd
-
-
-@app.cell(hide_code=True)
-def _(client, cluster, data, mo):
-    results_assets = (
-        data.cluster_assets(client, cluster, kind="results")
-        if client is not None
-        else []
-    )
-    run_picker = mo.ui.dropdown(
-        options={
-            f"{asset['name']}  ({asset['version']})": asset
-            for asset in results_assets
-        },
-        value=(
-            f"{results_assets[0]['name']}  ({results_assets[0]['version']})"
-            if results_assets
-            else None
-        ),
-        label="Training run",
-    )
-    run_picker if results_assets else mo.callout(
-        mo.md("""
-    **No training results on this cluster yet.**
-
-    Run the `train` recipe with an output name and it registers a
-    `kind="results"` asset; this notebook picks it up on the next refresh.
-    """),
-        kind="warn",
-    )
-    return (run_picker,)
+    model_name = data.configured_model()
+    return alt, client, cluster, data, mo, model_name, pd
 
 
 @app.cell
-def _(data, run_picker):
-    # The results asset is a JSON file on shared storage. For a normal run this
-    # is spaCy's meta.json from model-best; for a train-curve run it's the
-    # per-sample metrics instead, which is why nothing below assumes a shape
-    # without checking for it first.
-    results = (
-        data.load_json_asset(run_picker.value["path"]) if run_picker.value else {}
-    )
+def _(client, cluster, data, model_name):
+    # The train recipe registers metrics as `<model>.results`, so naming the
+    # model is enough to find them.
+    results_name = f"{model_name}.results"
+    matches = [
+        asset
+        for asset in (
+            data.cluster_assets(client, cluster, kind="results")
+            if client is not None
+            else []
+        )
+        if asset["name"] == results_name
+    ]
+    results = data.load_json_asset(matches[0]["path"]) if matches else {}
     performance = results.get("performance") or {}
-    return performance, results
+    return performance, results, results_name
+
+
+@app.cell(hide_code=True)
+def _(mo, model_name, performance, results_name):
+    mo.md(f"Reporting on **{model_name}**.") if performance else mo.callout(
+        mo.md(f"""
+    **No metrics found for this model.**
+
+    Nothing on the cluster is named `{results_name}`. The `train` recipe
+    writes that asset when a run finishes with saving enabled, so a run with
+    *Skip saving outputs* ticked leaves nothing to report. The error analysis
+    below still works, since it only needs the pipeline.
+    """),
+        kind="warn",
+    )
+    return
 
 
 @app.cell(hide_code=True)
@@ -98,7 +90,7 @@ def _(mo, performance):
         ],
         widths="equal",
         gap=1,
-    ) if performance else mo.md("_No `performance` block in this results asset._")
+    ) if performance else mo.md("")
     return
 
 
@@ -129,7 +121,7 @@ def _(alt, mo, scores):
                 y=alt.Y("label:N", title=None, sort="x"),
                 tooltip=["label:N", "p:Q", "r:Q", "f:Q"],
             )
-            .properties(height=220, title="F-score by label — click a bar")
+            .properties(height=220, title="F-score by label, click a bar")
         )
         if not scores.empty
         else None
@@ -145,14 +137,13 @@ def _(mo):
 
     Scores tell you *that* something is wrong. This tells you *what*.
 
-    The model is loaded from the `kind="model"` asset that matches this run,
-    then run over the annotations in a dataset. Each predicted entity is
-    compared against the gold spans on the same text:
+    The pipeline is run over the annotations in a dataset and each predicted
+    entity is compared against the gold spans on the same text.
 
-    * **false positive** — predicted, not annotated
-    * **false negative** — annotated, not predicted
+    * **false positive**, predicted but not annotated
+    * **false negative**, annotated but not predicted
 
-    Only accepted annotations count as gold; rejected and skipped ones are
+    Only accepted annotations count as gold. Rejected and skipped ones are
     excluded.
     """)
     return
@@ -174,22 +165,17 @@ def _(data, mo):
 
 
 @app.cell
-def _(client, cluster, data, dataset_name, run_analysis, run_picker, sample_size):
+def _(data, dataset_name, model_name, run_analysis, sample_size):
     # Loading a pipeline and running it over hundreds of texts is the one slow
-    # thing in this notebook, so it sits behind a button rather than re-running
-    # every time a filter changes.
+    # thing here, so it sits behind a button rather than re-running every time
+    # a filter changes.
     errors = []
     analysis_note = ""
 
-    if run_analysis.value and run_picker.value:
-        model_name = run_picker.value["name"].removesuffix(".results")
-        models = [
-            asset
-            for asset in data.cluster_assets(client, cluster, kind="model")
-            if asset["name"] == model_name
-        ]
-        if not models:
-            analysis_note = f"No `kind=\"model\"` asset named `{model_name}`."
+    if run_analysis.value:
+        target = data.configured_model_target()
+        if not target:
+            analysis_note = "No model was passed to this service."
         else:
             examples = data.load_examples(dataset_name.value)
             gold_rows = [
@@ -200,7 +186,7 @@ def _(client, cluster, data, dataset_name, run_analysis, run_picker, sample_size
                     f"No accepted annotations in `{dataset_name.value}`."
                 )
             else:
-                nlp = data.load_model(models[0]["path"])
+                nlp = data.load_model(target)
                 for eg in gold_rows:
                     text = eg.get("text", "")
                     gold = {
@@ -232,9 +218,9 @@ def _(client, cluster, data, dataset_name, run_analysis, run_picker, sample_size
                         )
                 analysis_note = (
                     f"Scored **{len(gold_rows)}** accepted annotations from "
-                    f"`{examples.dataset}` with model `{model_name}`."
+                    f"`{examples.dataset}` with **{model_name}**."
                 )
-    elif run_picker.value:
+    else:
         analysis_note = "Press **Run error analysis** to score the model."
     return analysis_note, errors
 
@@ -254,7 +240,7 @@ def _(errors, pd):
 
 @app.cell(hide_code=True)
 def _(alt, error_df, mo):
-    # Wrapping the chart in `mo.ui.altair_chart` is what makes it an *input*:
+    # Wrapping the chart in `mo.ui.altair_chart` is what makes it an *input*.
     # `error_chart.value` is the rows behind whatever you click, and the table
     # in the next cell reads it.
     error_chart = (
@@ -267,7 +253,7 @@ def _(alt, error_df, mo):
                 color=alt.Color("kind:N", title=None),
                 tooltip=["label:N", "kind:N", "count()"],
             )
-            .properties(height=240, title="Errors by label — click to filter")
+            .properties(height=240, title="Errors by label, click to filter")
         )
         if not error_df.empty
         else None
@@ -293,9 +279,9 @@ def _(error_chart, error_df, mo):
 
 @app.cell(hide_code=True)
 def _(mo, score_chart):
-    # The score chart is an input too: this reads back whichever labels you
-    # clicked up top, which is handy when comparing "worst F" against "most
-    # errors" — they are not always the same labels.
+    # The score chart is an input too. This reads back whichever labels you
+    # clicked up top, which is handy when comparing worst F against most
+    # errors, because they are not always the same labels.
     mo.md(
         f"Selected in the score chart: `{list(score_chart.value['label'])}`"
     ) if score_chart is not None and not score_chart.value.empty else mo.md("")

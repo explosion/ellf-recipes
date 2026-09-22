@@ -26,8 +26,16 @@ def test_starter_notebooks_are_marimo_notebooks(path):
     assert 'if __name__ == "__main__":' in source
 
 
-def test_the_default_notebook_is_bundled():
-    assert (workspace._templates_dir() / workspace.DEFAULT_NOTEBOOK).exists()
+def test_every_notebook_a_recipe_opens_is_bundled():
+    """A recipe naming a starter that doesn't ship would seed a blank one.
+
+    That failure is silent. The service comes up, marimo opens, and the user
+    gets an empty notebook instead of the analysis they asked for.
+    """
+    from ellf_notebook.recipes import dataset_explorer, training_results
+
+    for module in (dataset_explorer, training_results):
+        assert (workspace._templates_dir() / module.NOTEBOOK).exists(), module.NOTEBOOK
 
 
 @pytest.mark.parametrize("path", _notebook_paths(), ids=lambda p: p.name)

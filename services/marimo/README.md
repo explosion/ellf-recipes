@@ -19,7 +19,8 @@ services/marimo/
 ├── setup.py                            # standard custom-recipe packaging
 ├── requirements.in                     # marimo, installed into the image on publish
 └── ellf_notebook/
-    ├── recipes/marimo_notebook.py      # the @service_recipe
+    ├── recipes/                        # one @service_recipe per notebook
+    ├── launcher.py                     # starting marimo, shared by all three
     ├── workspace.py                    # where editable notebooks live on NFS
     ├── data.py                         # Prodigy and Ellf SDK plumbing
     ├── notebooks/dataset_explorer.py   # starter for annotations in a dataset
@@ -64,8 +65,8 @@ cluster`, which is marimo. The install is cached on NFS by base image and
 requirement set, so republishing unchanged dependencies skips it.
 
 ```bash
-ellf services create marimo_notebook --help
-ellf services create marimo_notebook --name explore --dataset support_ner --workspace team-a
+ellf services create dataset_explorer --help
+ellf services create dataset_explorer --name explore --dataset support_ner --workspace team-a
 ellf services url explore
 ```
 
@@ -73,25 +74,28 @@ Or create it from the web app, where the recipe shows up under Services with a
 form built from its signature. Open the URL as a logged-in project member and
 the notebook is there.
 
-| Field | Meaning |
-| --- | --- |
-| `dataset` | Dataset the starter notebook opens with. Not a binding, since the notebook can read any dataset and the name is an editable field on the page. |
-| `workspace` | Folder on shared storage for this notebook and anything it writes. Reuse a name to pick up where you left off, or to hand the notebook to a colleague. |
-| `notebook` | Which `.py` in the workspace to open. A name you haven't used yet is created from a starter. |
-| `read_only` | Serve as an app rather than an editor. Filters still work, the code is visible, editing is not. |
+Every recipe takes a `workspace`, which is the folder on shared storage that
+holds its notebooks, and a `read_only` switch that serves the notebook as an
+app rather than an editor. Reuse a workspace name to pick up where you or a
+colleague left off, or pick a new one for a clean slate.
 
-## The starter notebooks
+## The recipes
 
-Three ship in the package. `seed_notebook` copies one into the workspace the
-first time that filename is opened and never overwrites it again, so a starter
-is a starting point rather than a managed file. Type a filename that isn't one
-of these and you get `blank.py`.
+Three, because the notebooks want different inputs. Each one is a named
+service that opens its own notebook, so you pick the analysis you want rather
+than a generic notebook and then a filename.
 
-| Notebook | What it's for |
-| --- | --- |
-| `dataset_explorer.py` | The annotations in one dataset. Flatten, filter, chart, browse. The worked example, so start here. |
-| `training_results.py` | What a training run scored, then which examples the model gets wrong. Reads the `kind="results"` asset for the metrics and loads the matching `kind="model"` asset for the error analysis. |
-| `blank.py` | A reference for reaching the three kinds of Ellf object, datasets, assets and jobs, with a working call for each. What you get for any new notebook name. |
+| Recipe | Asks for | What you get |
+| --- | --- | --- |
+| `dataset_explorer` | a dataset | The annotations in it. Flatten, filter, chart, browse. The worked example, so start here. |
+| `training_results` | a model and a dataset | What the training run scored, then which examples the model gets wrong. Metrics come from the `kind="results"` asset the `train` recipe writes beside every pipeline, and the pipeline itself is what the error analysis runs. |
+| `marimo_notebook` | a dataset and a filename | The general case. Open a notebook somebody wrote in a workspace, or start a new one. A name that isn't there yet is created from a blank starter that shows how to reach datasets, assets and jobs. |
+
+The notebooks themselves ship in `notebooks/`. `seed_notebook` copies one into
+the workspace the first time it is opened and never overwrites it again, so a
+starter is a starting point rather than a managed file. Once you are in,
+marimo's file browser is rooted at the workspace, so you can switch between
+notebooks regardless of which recipe opened the session.
 
 ### Charts are inputs, not output
 
@@ -182,8 +186,9 @@ ellf-dev preview marimo_notebook
 ```
 
 `preview` renders the form and prints the arguments it would submit. It never
-calls the recipe, so nothing starts. Running the recipe itself needs a cluster,
-because the dataset argument resolves against real platform objects.
+calls the recipe, so nothing starts. To see the recipe actually do its job,
+publish it to a cluster, where the dataset argument resolves to a real dataset
+and the notebook reads real annotations.
 
 Editing a starter changes what new workspaces get. Editing in the browser
 changes only that workspace.

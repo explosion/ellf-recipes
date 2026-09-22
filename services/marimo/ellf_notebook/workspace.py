@@ -43,7 +43,6 @@ ROOT_ENV_VAR = "ELLF_MARIMO_ROOT"
 NFS_SUBDIR = "marimo"
 
 DEFAULT_WORKSPACE = "default"
-DEFAULT_NOTEBOOK = "dataset_explorer.py"
 
 _NAME_RE = re.compile(r"^[\w-]+$")
 

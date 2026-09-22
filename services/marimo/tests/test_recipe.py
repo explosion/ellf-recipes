@@ -4,7 +4,7 @@ import pytest
 
 from ellf_recipes_sdk import InputDataset
 
-from ellf_notebook import workspace
+from ellf_notebook import launcher, workspace
 from ellf_notebook.recipes import marimo_notebook as recipe
 
 
@@ -18,7 +18,7 @@ def launched(tmp_path, monkeypatch):
         calls.append((argv, kwargs))
         return None
 
-    monkeypatch.setattr(recipe.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
     return calls
 
 
@@ -30,7 +30,7 @@ def _run(**kwargs):
 def test_it_launches_an_editor_on_the_seeded_notebook(launched, tmp_path):
     assert _run() is None
     (argv, kwargs) = launched[0]
-    notebook = tmp_path / workspace.DEFAULT_WORKSPACE / workspace.DEFAULT_NOTEBOOK
+    notebook = tmp_path / workspace.DEFAULT_WORKSPACE / recipe.DEFAULT_NOTEBOOK
     assert notebook.exists()
     assert argv[1:3] == ["-m", "marimo"]
     assert "edit" in argv
@@ -59,10 +59,10 @@ def test_it_defaults_to_marimos_own_port(launched, monkeypatch):
     monkeypatch.delenv("ELLF_RECIPES_PORT", raising=False)
     _run()
     argv = launched[0][0]
-    assert argv[argv.index("--port") + 1] == str(recipe.MARIMO_PORT)
+    assert argv[argv.index("--port") + 1] == str(launcher.MARIMO_PORT)
     # The declared port and the bound port must not drift: the cluster routes
     # and health-checks whatever @service_recipe declared.
-    assert recipe.MARIMO_PORT == 2718
+    assert launcher.MARIMO_PORT == 2718
 
 
 def test_marimo_settings_are_kept_in_the_workspace(launched, tmp_path):
@@ -83,7 +83,7 @@ def test_the_notebook_process_is_told_which_dataset_to_open(launched):
 
 def test_a_second_service_on_the_same_workspace_keeps_the_edits(launched, tmp_path):
     _run(workspace="shared")
-    notebook = tmp_path / "shared" / workspace.DEFAULT_NOTEBOOK
+    notebook = tmp_path / "shared" / recipe.DEFAULT_NOTEBOOK
     notebook.write_text("# edited in the browser\n", encoding="utf8")
     _run(workspace="shared")
     assert notebook.read_text(encoding="utf8") == "# edited in the browser\n"

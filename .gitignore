@@ -219,3 +219,6 @@ __marimo__/
 
 # marimo workspaces from a local `ellf-dev run`
 .marimo-workspaces/
+
+# local objects map for `ellf-dev run`, points at your own Prodigy datasets
+local-objects.json

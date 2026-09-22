@@ -41,16 +41,16 @@ def test_notebook_names_are_validated(name):
 
 def test_seed_notebook_copies_the_bundled_starter(root):
     directory = workspace.resolve_workspace("w")
-    path = workspace.seed_notebook(directory, workspace.DEFAULT_NOTEBOOK)
-    assert path == directory / workspace.DEFAULT_NOTEBOOK
+    path = workspace.seed_notebook(directory, "dataset_explorer.py")
+    assert path == directory / "dataset_explorer.py"
     assert "marimo.App" in path.read_text(encoding="utf8")
 
 
 def test_seed_notebook_never_overwrites_an_edited_notebook(root):
     directory = workspace.resolve_workspace("w")
-    path = workspace.seed_notebook(directory, workspace.DEFAULT_NOTEBOOK)
+    path = workspace.seed_notebook(directory, "dataset_explorer.py")
     path.write_text("# my edits\n", encoding="utf8")
-    assert workspace.seed_notebook(directory, workspace.DEFAULT_NOTEBOOK) == path
+    assert workspace.seed_notebook(directory, "dataset_explorer.py") == path
     assert path.read_text(encoding="utf8") == "# my edits\n"
 
 
@@ -64,5 +64,5 @@ def test_an_unknown_notebook_name_starts_from_the_blank_template(root):
 
 
 def test_bundled_notebooks_are_listed(root):
-    assert workspace.DEFAULT_NOTEBOOK in workspace.bundled_notebooks()
+    assert "dataset_explorer.py" in workspace.bundled_notebooks()
     assert "blank.py" in workspace.bundled_notebooks()

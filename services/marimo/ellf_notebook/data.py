@@ -195,17 +195,37 @@ def load_json_asset(path: str) -> Dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf8"))
 
 
-def load_model(path: str) -> Any:
-    """Load a trained spaCy pipeline from a ``kind="model"`` asset's path.
+#: Set by the training-results recipe: what to hand ``spacy.load``. A
+#: directory asset resolves to its path on shared storage, a packaged one to
+#: the spaCy name of the wheel the broker installed before Python started.
+MODEL_TARGET_ENV_VAR = "ELLF_MARIMO_MODEL_TARGET"
 
-    The model directory lives on the same shared storage the pod already
-    mounts, so this is a plain ``spacy.load`` -- no download, no unpacking.
-    Raises rather than falling back: a silently absent model would make the
-    error analysis below quietly meaningless.
+#: Set by the training-results recipe: the name of the model asset, which is
+#: also how its metrics are found, as ``<name>.results``.
+MODEL_ENV_VAR = "ELLF_MARIMO_MODEL"
+
+
+def configured_model(default: str = "") -> str:
+    """Name of the model asset this service was started with."""
+    return os.environ.get(MODEL_ENV_VAR, default)
+
+
+def configured_model_target(default: str = "") -> str:
+    """What to pass to :func:`load_model` for the configured model."""
+    return os.environ.get(MODEL_TARGET_ENV_VAR, default)
+
+
+def load_model(target: str) -> Any:
+    """Load a trained spaCy pipeline.
+
+    ``target`` is whatever the recipe resolved, either a path on shared
+    storage or an installed package name, so this stays a plain
+    ``spacy.load``. It raises rather than falling back, because a silently
+    absent model would make an error analysis quietly meaningless.
     """
     import spacy
 
-    return spacy.load(path)
+    return spacy.load(target)
 
 
 def cluster_jobs(client: Any, cluster: Any) -> List[Dict[str, Any]]:

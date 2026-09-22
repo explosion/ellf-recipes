@@ -1,13 +1,9 @@
-"""Service recipe: open any notebook in a workspace.
+"""Service recipe: explore one annotation dataset in a marimo notebook.
 
-The general case, and the escape hatch. ``dataset_explorer`` and
-``training_results`` are named services for the notebooks that ship with this
-package, each asking for what its notebook actually needs. This one asks for a
-filename instead, which is how you reach a notebook somebody wrote in a
-workspace, and how you start a new one.
-
-A name that isn't already in the workspace is created from the blank starter,
-which is a working reference for reaching datasets, assets and jobs.
+A named service rather than a generic notebook launcher, so it shows up in the
+Services list as the thing it is and asks only for what it needs. The notebook
+it opens is editable in the browser and lives on shared storage, so the code
+people write here outlives the service.
 
 Avoid ``from __future__ import annotations`` here -- the recipe schema builder
 reads parameter annotations live via ``inspect.signature`` and expects the
@@ -19,18 +15,16 @@ from ellf_recipes_sdk import BoolProps, InputDataset, TextProps, service_recipe
 from ..launcher import MARIMO_PORT, launch
 from ..workspace import DEFAULT_WORKSPACE
 
-#: Anything not already in the workspace is seeded from this, so a filename
-#: nobody has used yet gives you a wired-up notebook rather than an empty file.
-DEFAULT_NOTEBOOK = "blank.py"
+NOTEBOOK = "dataset_explorer.py"
 
 
 @service_recipe(
-    title="Marimo Notebook",
+    title="Dataset Explorer",
     description=(
-        "An editable marimo notebook running on your cluster, wired up to "
-        "Prodigy and the Ellf SDK. Open a notebook a colleague wrote, or "
-        "start a new one. Notebooks are saved to shared storage, so edits "
-        "outlive the service."
+        "A live view of one annotation dataset, computed on your cluster. "
+        "Label distribution, throughput by annotator, and a browsable table, "
+        "all in a notebook you can edit in the browser. Change the query and "
+        "the charts recompute as you type."
     ),
     port=MARIMO_PORT,
     healthcheck_path="/health",
@@ -46,15 +40,6 @@ DEFAULT_NOTEBOOK = "blank.py"
             ),
             placeholder=DEFAULT_WORKSPACE,
         ),
-        "notebook": TextProps(
-            title="Notebook file",
-            description=(
-                "Which .py file in the workspace to open. A name that isn't "
-                "there yet gives you a new notebook, already wired up, with "
-                "working examples for datasets, assets and jobs."
-            ),
-            placeholder=DEFAULT_NOTEBOOK,
-        ),
         "read_only": BoolProps(
             title="Share as a read-only app",
             description=(
@@ -65,28 +50,26 @@ DEFAULT_NOTEBOOK = "blank.py"
         ),
     },
 )
-def marimo_notebook(
+def dataset_explorer(
     *,
     dataset: InputDataset,
     workspace: str = DEFAULT_WORKSPACE,
-    notebook: str = DEFAULT_NOTEBOOK,
     read_only: bool = False,
 ) -> None:
-    """Open ``notebook`` in ``workspace`` and keep marimo running.
+    """Open the dataset explorer notebook on ``dataset``.
 
     Args:
         dataset: The dataset the notebook opens with. A starting point rather
             than a binding, since the notebook can read any dataset on the
-            cluster.
+            cluster and the name is an editable field on the page.
         workspace: Name of the folder on shared storage to keep notebooks in.
-        notebook: Filename to open within the workspace.
         read_only: Serve as a read-only app rather than an editor.
 
     Returns:
         ``None``, because this is a port-mode service.
     """
     return launch(
-        notebook=notebook,
+        notebook=NOTEBOOK,
         workspace=workspace,
         read_only=read_only,
         env_extra={"ELLF_MARIMO_DATASET": dataset.name},
