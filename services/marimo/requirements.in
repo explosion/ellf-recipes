@@ -1,0 +1,17 @@
+# Installed into the recipe image at publish time: `ellf publish code` reads
+# them off the sdist's metadata and the broker pip-installs them on the
+# cluster, in the base image, before layering this package on top.
+#
+# Keep this list to what the base recipes image genuinely lacks. The install
+# runs as `pip install --target`, which ignores the image's own
+# site-packages, so anything listed here is downloaded in full even when the
+# image already has it -- and the broker then tars and gzips the whole result
+# into an image layer. Listing `ellf-recipes-sdk` here (as the cookiecutter
+# does, for local installs) drags spacy, boto3, google-cloud and psycopg2 into
+# that layer for nothing; it is in requirements-dev.in instead.
+#
+# Same reasoning for pandas and altair, which the notebook imports: the base
+# image already has them (Streamlit pulls them in), and re-pinning them here
+# would risk shadowing the versions the rest of the image was resolved
+# against.
+marimo >= 0.24.0, < 0.25.0
