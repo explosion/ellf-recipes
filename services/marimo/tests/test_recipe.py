@@ -124,3 +124,20 @@ def test_read_only_without_a_notebook_is_refused():
     """`marimo run` serves one notebook, so a workspace cannot be an app."""
     with pytest.raises(ValueError):
         launcher.launch(workspace="w", read_only=True)
+
+
+def test_descriptions_fit_the_column_they_are_stored_in():
+    """PAM stores these in a varchar(255) and nothing checks before the insert.
+
+    Going over shows up as an opaque 500 from `ellf publish code`, after the
+    package has already been created, so it is worth catching here.
+    """
+    import re
+    from pathlib import Path
+
+    recipes_dir = Path(__file__).resolve().parent.parent / "ellf_notebook"
+    for path in recipes_dir.rglob("*.py"):
+        source = path.read_text(encoding="utf8")
+        for match in re.finditer(r'description=\(\s*((?:\s*"[^"]*"\s*)+)\)', source):
+            text = "".join(re.findall(r'"([^"]*)"', match.group(1)))
+            assert len(text) <= 255, f"{path.name}: {len(text)} chars"

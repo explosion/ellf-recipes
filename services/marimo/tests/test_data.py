@@ -140,3 +140,31 @@ def test_cluster_jobs_merges_tasks_and_actions_newest_first():
     )
     rows = data.cluster_jobs(client, CLUSTER_ID)
     assert [row["name"] for row in rows] == ["newer", "older"]
+
+
+def test_a_stored_alias_is_resolved_to_a_real_path(monkeypatch):
+    """The platform stores whatever was typed, often `{__nfs__}/...`.
+
+    The broker expands those only for objects passed into a recipe. An asset
+    fetched at runtime through the SDK comes back raw, so reading one means
+    resolving it here first.
+    """
+    monkeypatch.setenv("ELLF_BUILTIN_PATH_NFS", "/mnt/nfs")
+    assert data.resolve_path("{__nfs__}/models/run.json") == "/mnt/nfs/models/run.json"
+
+
+def test_an_absolute_path_is_left_alone(monkeypatch):
+    monkeypatch.setenv("ELLF_BUILTIN_PATH_NFS", "/mnt/nfs")
+    assert data.resolve_path("/mnt/nfs/models/run.json") == "/mnt/nfs/models/run.json"
+
+
+def test_an_unresolvable_alias_is_returned_unchanged(monkeypatch):
+    """Off-cluster there is no mount, so failing loudly beats a silent read."""
+    monkeypatch.delenv("ELLF_BUILTIN_PATH_NFS", raising=False)
+    assert data.resolve_path("{__nfs__}/models/run.json") == "{__nfs__}/models/run.json"
+
+
+def test_asset_paths_come_back_resolved(monkeypatch):
+    monkeypatch.setenv("ELLF_BUILTIN_PATH_NFS", "/mnt/nfs")
+    client = _FakeClient(assets=[_FakeAsset("run", "results", "{__nfs__}/models/run.json")])
+    assert data.cluster_assets(client, CLUSTER_ID)[0]["path"] == "/mnt/nfs/models/run.json"

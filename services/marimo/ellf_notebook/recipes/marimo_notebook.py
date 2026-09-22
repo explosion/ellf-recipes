@@ -29,12 +29,13 @@ from ..workspace import DEFAULT_WORKSPACE
 
 @service_recipe(
     title="Marimo Notebook",
+    # Recipe descriptions are stored in a varchar(255), and nothing checks
+    # that before the insert, so going over shows up as a 500 at publish time.
     description=(
         "Run a marimo notebook on your cluster, next to the annotation "
-        "database and behind your platform's auth. Pick a notebook and it "
-        "opens in the browser, editable, with the code and the charts "
-        "recomputing as you type. Notebooks are saved to shared storage, so "
-        "edits outlive the service."
+        "database and behind your auth. Pick a notebook and it opens in the "
+        "browser, editable, with charts recomputing as you type. Edits are "
+        "saved to shared storage."
     ),
     port=MARIMO_PORT,
     healthcheck_path="/health",

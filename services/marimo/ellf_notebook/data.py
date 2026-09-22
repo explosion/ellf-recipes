@@ -156,16 +156,45 @@ def cluster_datasets(client: Any, cluster: Any) -> List[Dict[str, Any]]:
     ]
 
 
+#: Placeholders the platform stores in asset paths, and the env vars the
+#: broker sets on every recipe pod to resolve them. The broker expands these
+#: for objects passed *into* a recipe, but an asset fetched at runtime through
+#: the SDK comes back with the raw stored string, so this module resolves them
+#: itself. Mirrors ``ellf_recipes_sdk.sdk.paths._BUILTIN_PATH_ENV_VARS``.
+BUILTIN_PATHS = {
+    "__nfs__": "ELLF_BUILTIN_PATH_NFS",
+    "__bucket__": "ELLF_BUILTIN_PATH_BUCKET",
+    "__data__": "ELLF_BUILTIN_PATH_DATA",
+    "__tmp__": "ELLF_BUILTIN_PATH_TMP",
+}
+
+
+def resolve_path(path: str) -> str:
+    """Expand a ``{__nfs__}/...`` style alias into a path this pod can open.
+
+    Returns the string unchanged when it holds no placeholder, or when the
+    matching env var is missing, which is what happens off-cluster. Callers
+    get a path that either works or fails loudly, rather than a silent empty
+    read.
+    """
+    for alias, env_var in BUILTIN_PATHS.items():
+        token = "{" + alias + "}"
+        if token in path:
+            root = os.environ.get(env_var)
+            if root:
+                path = path.replace(token, root.rstrip("/"))
+    return path
+
+
 def cluster_assets(
     client: Any, cluster: Any, kind: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """Every asset registered on the cluster, optionally filtered by kind.
 
-    An asset is the platform's record of a file on shared storage: a trained
-    model, a results JSON, a PDF, a patterns file. ``path`` comes back already
-    resolved to a concrete mount the pod can read -- ``/mnt/nfs/...`` rather
-    than a ``{__nfs__}/...`` alias -- so ``Path(row["path"]).read_text()``
-    works without any further resolution.
+    An asset is the platform's record of a file on shared storage, a trained
+    model, a results JSON, a PDF, a patterns file. ``path`` is resolved here
+    so it can be opened directly, because what the platform stores is
+    whatever the person who registered it typed, often an alias.
     """
     from ellf_pam_sdk.models import AssetReading
 
@@ -175,7 +204,7 @@ def cluster_assets(
             "name": asset.name,
             "kind": asset.kind,
             "version": asset.version,
-            "path": asset.path,
+            "path": resolve_path(asset.path),
             "created": asset.created,
             "meta": asset.meta,
             "id": str(asset.id),
@@ -192,7 +221,7 @@ def load_json_asset(path: str) -> Dict[str, Any]:
     """
     import json
 
-    return json.loads(Path(path).read_text(encoding="utf8"))
+    return json.loads(Path(resolve_path(path)).read_text(encoding="utf8"))
 
 
 #: Set by the training-results recipe: what to hand ``spacy.load``. A
@@ -225,7 +254,7 @@ def load_model(target: str) -> Any:
     """
     import spacy
 
-    return spacy.load(target)
+    return spacy.load(resolve_path(target))
 
 
 def cluster_jobs(client: Any, cluster: Any) -> List[Dict[str, Any]]:

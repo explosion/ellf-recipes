@@ -27,11 +27,11 @@ def test_starter_notebooks_are_marimo_notebooks(path):
 
 
 def test_every_bundled_notebook_can_be_registered():
-    """`register_notebooks` turns each bundled file into an asset by stem.
+    """Notebooks are registered as assets named after the file stem.
 
-    Two starters whose filenames differ only by extension would collide on
-    the asset name, and the second registration would fail on a cluster
-    rather than here.
+    Two notebooks whose filenames differ only by extension would collide on
+    the asset name, and the second `ellf assets create` would fail on a
+    cluster rather than here.
     """
     from pathlib import Path
 

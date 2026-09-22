@@ -20,7 +20,6 @@ services/marimo/
 ├── requirements.in                     # marimo, installed into the image on publish
 └── ellf_notebook/
     ├── recipes/marimo_notebook.py      # the service, a notebook runner
-    ├── recipes/register_notebooks.py   # the action that creates the assets
     ├── types.py                        # the notebook asset type
     ├── launcher.py                     # starting marimo
     ├── workspace.py                    # where working copies live on NFS
@@ -66,12 +65,24 @@ The first publish spends a few minutes on `Installing requirements on the
 cluster`, which is marimo. The install is cached on NFS by base image and
 requirement set, so republishing unchanged dependencies skips it.
 
-Publishing registers recipes, not assets, so the notebook picker starts
-empty. Run the action once and the notebooks that ship here become assets.
+Publishing registers the recipe, not the notebooks, so the picker starts
+empty. A notebook asset is a file on shared storage plus a reference to it,
+and registering one is two ordinary commands. The same two register a notebook
+you wrote yourself, which is the point.
 
 ```bash
-ellf actions create register_notebooks --name register --project-id <your project>
+ellf files cp ellf_notebook/notebooks/dataset_explorer.py \
+    "{__nfs__}/marimo/starters/dataset_explorer.py" --make-dirs
+ellf assets create dataset_explorer \
+    "{__nfs__}/marimo/starters/dataset_explorer.py" --kind notebook
 ```
+
+Repeat for `training_results.py` and `blank.py`, or for anything else you want
+in the picker. `--make-dirs` is needed the first time, because nothing has
+created that folder yet. `ellf assets create` stores a reference and moves no
+data, so the file has to be on shared storage before you register it, and
+`--overwrite` on a later copy changes what new workspaces start from without
+touching anyone's working copy.
 
 Then start a service on any of them.
 
