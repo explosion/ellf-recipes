@@ -11,10 +11,9 @@ def _(mo):
 
     What a training run scored, and below that, *which examples it gets wrong*.
 
-    The service was started with a model, so this notebook reports on that one.
-    Its metrics come from the `kind="results"` asset the `train` recipe writes
-    beside every pipeline, and the pipeline itself is what the error analysis
-    runs.
+    Pick a training run below. Its metrics come from the `kind="results"`
+    asset the `train` recipe writes beside every pipeline, and the pipeline
+    itself is what the error analysis runs.
 
     The charts are clickable. Selecting a bar filters the tables underneath,
     which is the point of doing this in a notebook rather than a dashboard.
@@ -32,42 +31,54 @@ def _():
 
     client = data.pam_client()
     cluster = data.cluster_id()
-    model_name = data.configured_model()
-    return alt, client, cluster, data, mo, model_name, pd
-
-
-@app.cell
-def _(client, cluster, data, model_name):
-    # The train recipe registers metrics as `<model>.results`, so naming the
-    # model is enough to find them.
-    results_name = f"{model_name}.results"
-    matches = [
-        asset
-        for asset in (
-            data.cluster_assets(client, cluster, kind="results")
-            if client is not None
-            else []
-        )
-        if asset["name"] == results_name
-    ]
-    results = data.load_json_asset(matches[0]["path"]) if matches else {}
-    performance = results.get("performance") or {}
-    return performance, results, results_name
+    return alt, client, cluster, data, mo, pd
 
 
 @app.cell(hide_code=True)
-def _(mo, model_name, performance, results_name):
-    mo.md(f"Reporting on **{model_name}**.") if performance else mo.callout(
-        mo.md(f"""
-    **No metrics found for this model.**
+def _(client, cluster, data, mo):
+    # The service runs notebooks, it does not know what any one of them wants,
+    # so the choice of training run lives here. The train recipe registers
+    # metrics as `<model>.results`, so listing those assets lists the runs.
+    runs = (
+        data.cluster_assets(client, cluster, kind="results")
+        if client is not None
+        else []
+    )
+    run_picker = mo.ui.dropdown(
+        options={f"{a['name']}  ({a['version']})": a for a in runs},
+        value=(
+            f"{runs[0]['name']}  ({runs[0]['version']})" if runs else None
+        ),
+        label="Training run",
+    )
+    run_picker if runs else mo.callout(
+        mo.md("""
+    **No training runs on this cluster yet.**
 
-    Nothing on the cluster is named `{results_name}`. The `train` recipe
-    writes that asset when a run finishes with saving enabled, so a run with
-    *Skip saving outputs* ticked leaves nothing to report. The error analysis
-    below still works, since it only needs the pipeline.
+    The `train` recipe registers a `kind="results"` asset when a run finishes
+    with saving enabled. A run with *Skip saving outputs* ticked leaves
+    nothing to report on.
     """),
         kind="warn",
     )
+    return (run_picker,)
+
+
+@app.cell
+def _(data, run_picker):
+    results = (
+        data.load_json_asset(run_picker.value["path"]) if run_picker.value else {}
+    )
+    performance = results.get("performance") or {}
+    model_name = (
+        run_picker.value["name"].removesuffix(".results") if run_picker.value else ""
+    )
+    return model_name, performance, results
+
+
+@app.cell(hide_code=True)
+def _(mo, model_name, performance):
+    mo.md(f"Reporting on **{model_name}**.") if performance else mo.md("")
     return
 
 
@@ -165,18 +176,32 @@ def _(data, mo):
 
 
 @app.cell
-def _(data, dataset_name, model_name, run_analysis, sample_size):
+def _(client, cluster, data, dataset_name, model_name, run_analysis, sample_size):
     # Loading a pipeline and running it over hundreds of texts is the one slow
     # thing here, so it sits behind a button rather than re-running every time
     # a filter changes.
     errors = []
     analysis_note = ""
 
-    if run_analysis.value:
-        target = data.configured_model_target()
-        if not target:
-            analysis_note = "No model was passed to this service."
+    if run_analysis.value and model_name:
+        models = [
+            a
+            for a in (
+                data.cluster_assets(client, cluster, kind="model")
+                if client is not None
+                else []
+            )
+            if a["name"] == model_name
+        ]
+        if not models:
+            analysis_note = f"No model asset named `{model_name}` on this cluster."
         else:
+            asset = models[0]
+            target = (
+                asset["meta"].get("spacy_model_name", model_name)
+                if asset["meta"].get("format") == "package"
+                else asset["path"]
+            )
             examples = data.load_examples(dataset_name.value)
             gold_rows = [
                 eg for eg in examples.rows if eg.get("answer") == "accept"

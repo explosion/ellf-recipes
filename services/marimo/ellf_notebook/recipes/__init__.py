@@ -1,8 +1,7 @@
 # The import order determines the order of recipes shown in the UI
-from . import dataset_explorer, training_results, marimo_notebook
+from . import marimo_notebook, register_notebooks
 
 __all__ = [
-    "dataset_explorer",
-    "training_results",
     "marimo_notebook",
+    "register_notebooks",
 ]

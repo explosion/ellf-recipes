@@ -1,11 +1,24 @@
+"""The service runs a notebook asset, and edits the copy rather than the source."""
+
 import uuid
 
 import pytest
 
-from ellf_recipes_sdk import InputDataset
-
 from ellf_notebook import launcher, workspace
 from ellf_notebook.recipes import marimo_notebook as recipe
+from ellf_notebook.types import Notebook
+
+SOURCE_TEXT = "import marimo\n# the registered notebook\n"
+
+
+@pytest.fixture
+def source(tmp_path):
+    """A notebook asset's file, standing in for one on shared storage."""
+    starters = tmp_path / "starters"
+    starters.mkdir()
+    path = starters / "explorer.py"
+    path.write_text(SOURCE_TEXT, encoding="utf8")
+    return path
 
 
 @pytest.fixture
@@ -22,65 +35,68 @@ def launched(tmp_path, monkeypatch):
     return calls
 
 
-def _run(**kwargs):
-    dataset = InputDataset(id=uuid.uuid4(), name="support_ner", cluster_id=uuid.uuid4())
-    return recipe.marimo_notebook(dataset=dataset, **kwargs)
+def _notebook(source, name="explorer"):
+    return Notebook(
+        id=uuid.uuid4(),
+        cluster_id=uuid.uuid4(),
+        name=name,
+        version="0.1.0",
+        path=str(source),
+        meta={},
+    )
 
 
-def test_it_opens_the_workspace_rather_than_one_notebook(launched, tmp_path):
-    """No filename means marimo's home page, which lists the workspace."""
-    assert _run() is None
-    (argv, kwargs) = launched[0]
-    workspace_dir = tmp_path / workspace.DEFAULT_WORKSPACE
+def _run(source, **kwargs):
+    return recipe.marimo_notebook(notebook=_notebook(source), **kwargs)
+
+
+def test_it_opens_a_copy_seeded_from_the_asset(launched, source, tmp_path):
+    assert _run(source) is None
+    argv, kwargs = launched[0]
+    copy = tmp_path / workspace.DEFAULT_WORKSPACE / "explorer.py"
+    assert copy.exists()
+    assert copy.read_text(encoding="utf8") == SOURCE_TEXT
     assert argv[1:3] == ["-m", "marimo"]
     assert "edit" in argv
-    assert not [a for a in argv if a.endswith(".py")]
+    assert str(copy) in argv
     assert "--headless" in argv and "--no-token" in argv
-    assert argv[argv.index("--host") + 1] == "0.0.0.0"
-    # cwd is the workspace, so the home page lists it and files land there
-    assert kwargs["cwd"] == str(workspace_dir)
+    assert kwargs["cwd"] == str(copy.parent)
 
 
-def test_an_empty_workspace_gets_one_notebook_to_open(launched, tmp_path):
-    """An empty home page would be a dead end on a brand new workspace."""
-    _run()
-    seeded = tmp_path / workspace.DEFAULT_WORKSPACE / launcher.FALLBACK_NOTEBOOK
-    assert seeded.exists()
+def test_the_asset_file_is_never_what_gets_edited(launched, source, tmp_path):
+    """Two people opening one notebook must not write over each other."""
+    _run(source)
+    copy = tmp_path / workspace.DEFAULT_WORKSPACE / "explorer.py"
+    assert copy != source
+    assert str(source) not in launched[0][0]
 
 
-def test_an_existing_workspace_is_left_alone(launched, tmp_path):
-    """Seeding into a workspace people already use would be an intrusion."""
-    workspace_dir = tmp_path / workspace.DEFAULT_WORKSPACE
-    workspace_dir.mkdir(parents=True)
-    (workspace_dir / "theirs.py").write_text("import marimo\n", encoding="utf8")
-    _run()
-    assert not (workspace_dir / launcher.FALLBACK_NOTEBOOK).exists()
-    assert sorted(p.name for p in workspace_dir.glob("*.py")) == ["theirs.py"]
+def test_a_workspace_copy_survives_a_restart(launched, source, tmp_path):
+    """The copy holds the user's edits, so seeding must not overwrite it."""
+    _run(source, workspace="shared")
+    copy = tmp_path / "shared" / "explorer.py"
+    copy.write_text("# edited in the browser\n", encoding="utf8")
+    _run(source, workspace="shared")
+    assert copy.read_text(encoding="utf8") == "# edited in the browser\n"
 
 
-def test_read_only_without_a_notebook_is_refused():
-    """`marimo run` serves one notebook, so a workspace cannot be an app."""
-    with pytest.raises(ValueError):
-        launcher.launch(workspace="w", read_only=True)
-
-
-def test_read_only_serves_the_app_instead_of_the_editor(launched):
-    launcher.launch(workspace="w", notebook="blank.py", read_only=True)
+def test_read_only_serves_the_app_instead_of_the_editor(launched, source):
+    _run(source, read_only=True)
     argv = launched[0][0]
     assert "run" in argv and "edit" not in argv
     assert "--include-code" in argv
 
 
-def test_it_binds_the_port_the_cluster_probes(launched, monkeypatch):
+def test_it_binds_the_port_the_cluster_probes(launched, source, monkeypatch):
     monkeypatch.setenv("ELLF_RECIPES_PORT", "9000")
-    _run()
+    _run(source)
     argv = launched[0][0]
     assert argv[argv.index("--port") + 1] == "9000"
 
 
-def test_it_defaults_to_marimos_own_port(launched, monkeypatch):
+def test_it_defaults_to_marimos_own_port(launched, source, monkeypatch):
     monkeypatch.delenv("ELLF_RECIPES_PORT", raising=False)
-    _run()
+    _run(source)
     argv = launched[0][0]
     assert argv[argv.index("--port") + 1] == str(launcher.MARIMO_PORT)
     # The declared port and the bound port must not drift: the cluster routes
@@ -88,9 +104,9 @@ def test_it_defaults_to_marimos_own_port(launched, monkeypatch):
     assert launcher.MARIMO_PORT == 2718
 
 
-def test_marimo_settings_are_kept_in_the_workspace(launched, tmp_path):
+def test_marimo_settings_are_kept_in_the_workspace(launched, source, tmp_path):
     """Not in $HOME: the pod's home need not be writable, and settings persist."""
-    _run(workspace="team-a")
+    _run(source, workspace="team-a")
     env = launched[0][1]["env"]
     expected = str(tmp_path / "team-a" / ".marimo")
     assert env["XDG_CONFIG_HOME"] == expected
@@ -98,15 +114,13 @@ def test_marimo_settings_are_kept_in_the_workspace(launched, tmp_path):
     assert env["XDG_STATE_HOME"] == expected
 
 
-def test_the_notebook_process_is_told_which_dataset_to_open(launched):
-    _run()
+def test_the_notebook_process_is_told_which_notebook_it_is(launched, source):
+    _run(source)
     env = launched[0][1]["env"]
-    assert env["ELLF_MARIMO_DATASET"] == "support_ner"
+    assert env["ELLF_MARIMO_NOTEBOOK"] == "explorer"
 
 
-def test_a_second_service_on_the_same_workspace_keeps_the_edits(launched, tmp_path):
-    launcher.launch(workspace="shared", notebook="blank.py")
-    notebook = tmp_path / "shared" / "blank.py"
-    notebook.write_text("# edited in the browser\n", encoding="utf8")
-    launcher.launch(workspace="shared", notebook="blank.py")
-    assert notebook.read_text(encoding="utf8") == "# edited in the browser\n"
+def test_read_only_without_a_notebook_is_refused():
+    """`marimo run` serves one notebook, so a workspace cannot be an app."""
+    with pytest.raises(ValueError):
+        launcher.launch(workspace="w", read_only=True)

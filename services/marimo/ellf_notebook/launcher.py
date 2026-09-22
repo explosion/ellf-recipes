@@ -12,6 +12,7 @@ routes and health-checks marimo's port.
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Dict, Optional
 
 from .workspace import resolve_workspace, seed_notebook
@@ -31,6 +32,7 @@ def launch(
     *,
     workspace: str,
     notebook: Optional[str] = None,
+    source: Optional[str] = None,
     read_only: bool = False,
     env_extra: Optional[Dict[str, str]] = None,
 ) -> None:
@@ -38,10 +40,12 @@ def launch(
 
     Args:
         workspace: Folder name on shared storage to keep notebooks in.
-        notebook: Filename to open within the workspace, seeded from the
-            bundled starter of the same name on first use and never
-            overwritten afterwards. ``None`` opens marimo's own home page
-            instead, which lists the workspace and can create new notebooks.
+        notebook: Filename to open within the workspace, seeded on first use
+            and never overwritten afterwards. ``None`` opens marimo's own home
+            page instead, which lists the workspace.
+        source: File to seed the working copy from, which is the notebook
+            asset's path on shared storage. Defaults to the bundled starter of
+            the same name, so local development works without a cluster.
         read_only: Serve as an app (``marimo run``) rather than an editor.
             Requires ``notebook``, since an app is one notebook.
         env_extra: Extra environment for the marimo process, which is how a
@@ -64,7 +68,9 @@ def launch(
         if not any(workspace_dir.glob("*.py")):
             seed_notebook(workspace_dir, FALLBACK_NOTEBOOK)
     else:
-        notebook_path = seed_notebook(workspace_dir, notebook)
+        notebook_path = seed_notebook(
+            workspace_dir, notebook, Path(source) if source else None
+        )
 
     # marimo runs as a fresh process, so config is handed over via env vars
     # rather than function arguments. Everything else in the environment is

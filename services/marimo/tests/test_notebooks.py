@@ -26,16 +26,20 @@ def test_starter_notebooks_are_marimo_notebooks(path):
     assert 'if __name__ == "__main__":' in source
 
 
-def test_every_notebook_a_recipe_opens_is_bundled():
-    """A recipe naming a starter that doesn't ship would seed a blank one.
+def test_every_bundled_notebook_can_be_registered():
+    """`register_notebooks` turns each bundled file into an asset by stem.
 
-    That failure is silent. The service comes up, marimo opens, and the user
-    gets an empty notebook instead of the analysis they asked for.
+    Two starters whose filenames differ only by extension would collide on
+    the asset name, and the second registration would fail on a cluster
+    rather than here.
     """
-    from ellf_notebook.recipes import dataset_explorer, training_results
+    from pathlib import Path
 
-    for module in (dataset_explorer, training_results):
-        assert (workspace._templates_dir() / module.NOTEBOOK).exists(), module.NOTEBOOK
+    from ellf_notebook import workspace as ws
+
+    names = [Path(f).stem for f in ws.bundled_notebooks()]
+    assert len(names) == len(set(names)), names
+    assert names, "the package ships no notebooks to register"
 
 
 @pytest.mark.parametrize("path", _notebook_paths(), ids=lambda p: p.name)

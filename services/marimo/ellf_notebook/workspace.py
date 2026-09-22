@@ -26,7 +26,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 #: Env var the broker sets on every recipe pod for the shared NFS mount. See
 #: ``ellf_recipes_sdk.sdk.paths._BUILTIN_PATH_ENV_VARS`` for the full map -- we
@@ -101,20 +101,32 @@ def _templates_dir() -> Path:
     return Path(__file__).parent / "notebooks"
 
 
-def seed_notebook(workspace_dir: Path, notebook: str) -> Path:
+def seed_notebook(
+    workspace_dir: Path, notebook: str, source: Optional[Path] = None
+) -> Path:
     """Return the path to ``notebook`` in the workspace, seeding it if absent.
 
-    An existing file is never overwritten -- it holds the user's edits. A
-    missing one is copied from the bundled starter of the same name, or, for a
-    name we don't ship, created from the blank starter so that ``marimo edit``
-    opens something valid rather than an empty file.
+    An existing file is never overwritten, because it holds the user's edits.
+    A missing one is copied from ``source``, which is the notebook asset's
+    file on shared storage. Falling back to the bundled starters keeps local
+    development working without a cluster.
+
+    Args:
+        workspace_dir: The workspace to seed into.
+        notebook: Filename the working copy takes.
+        source: File to copy from. Defaults to the bundled starter of the same
+            name, or the blank one for a name this package doesn't ship.
+
+    Returns:
+        Path to the working copy, which is what marimo opens.
     """
     validate_notebook(notebook)
     target = workspace_dir / notebook
     if target.exists():
         return target
-    template = _templates_dir() / notebook
-    if not template.exists():
-        template = _templates_dir() / "blank.py"
-    shutil.copyfile(template, target)
+    if source is None:
+        source = _templates_dir() / notebook
+        if not source.exists():
+            source = _templates_dir() / "blank.py"
+    shutil.copyfile(source, target)
     return target

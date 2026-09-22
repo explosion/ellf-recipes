@@ -30,15 +30,31 @@ def _():
 
     from ellf_notebook import data
 
-    return alt, data, mo, pd
+    client = data.pam_client()
+    cluster = data.cluster_id()
+    return alt, client, cluster, data, mo, pd
 
 
 @app.cell(hide_code=True)
-def _(data, mo):
-    dataset_name = mo.ui.text(
-        value=data.configured_dataset("sample_annotations"),
-        label="Dataset",
-        full_width=False,
+def _(client, cluster, data, mo):
+    # The service does not pass a dataset, so the notebook asks. On a cluster
+    # that means a list of what is actually there, read as the user who
+    # started the job, and off-cluster it falls back to typing a name.
+    names = sorted(
+        d["name"] for d in data.cluster_datasets(client, cluster)
+    ) if client is not None and cluster is not None else []
+    dataset_name = (
+        mo.ui.dropdown(
+            options=names,
+            value=names[0] if names else None,
+            label="Dataset",
+        )
+        if names
+        else mo.ui.text(
+            value=data.configured_dataset("sample_annotations"),
+            label="Dataset",
+            full_width=False,
+        )
     )
     # Annotation is happening *now*, so offer to re-read on an interval. "off"
     # is the default: a notebook you're editing shouldn't re-run under you.
@@ -256,10 +272,7 @@ def _(mo):
 
 
 @app.cell
-def _(data, mo, pd):
-    client = data.pam_client()
-    cluster = data.cluster_id()
-
+def _(client, cluster, data, mo, pd):
     if client is None or cluster is None:
         cluster_view = mo.md(
             "_No job credentials in this environment — running off-cluster._"
