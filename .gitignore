@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# marimo workspaces from a local `ellf-dev run`
+.marimo-workspaces/
