@@ -88,16 +88,16 @@ def _(data, datasets, mo):
     elif examples.failed:
         dataset_view = mo.callout(
             mo.md(f"""
-    **Couldn't connect to the Prodigy database.**
+    **Couldn't read annotations from the Prodigy database.**
 
-    `{examples.error or "Unknown error."}`
+    `{examples.error}`
 
     To troubleshoot this, check the following.
 
     - **The notebook is running on your cluster.** If you're running it
-      locally, there's no cluster database to connect to. Start it as a service
-      on your cluster, or set `PRODIGY_CONFIG_OVERRIDES` or a `prodigy.json` to
-      point Prodigy to a database you can reach.
+      locally, Prodigy uses your local database, which is SQLite in
+      `~/.prodigy` by default, so the datasets on your cluster aren't
+      available. Start the notebook as a service on your cluster instead.
     - **The dataset exists.** Compare the name to the datasets listed above, or
       run `ellf datasets list`.
     - **The database is reachable.** If you see a connection or authentication

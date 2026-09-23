@@ -6,20 +6,20 @@
 
 This repository contains a collection of recipes for
 [Ellf](https://beta.ellf.ai), a platform for agentic NLP development. To use
-them you'll need an Ellf cluster and a license, since the recipes read and write
-annotations that live on the cluster itself. For questions and bug reports,
-use `ellf support create` from your Ellf CLI.
+them, you need an Ellf cluster and a license, because the recipes read and
+write annotations stored on your cluster. For questions and bug reports, run
+`ellf support create` in the Ellf CLI.
 
-> ✨ **Important note.** Nothing in this repository is bundled into Ellf. These
-> recipes are published to your own cluster on demand, and they're written to
-> be read and rewritten. They carry more comments than the built-ins and stay
-> deliberately simple, so they work as the basis for your own.
+> ✨ **Important note.** The recipes in this repository aren't included in Ellf.
+> You publish them to your own cluster when you need them. They have more
+> comments than the built-in recipes and are kept simple, so you can use them
+> as a starting point for your own.
 
 ## 📋 Usage
 
-A recipe here is an ordinary Python package. Publishing one builds an image on
-your cluster and registers the recipe, after which it appears in the web app
-alongside the built-ins.
+Each recipe is a Python package. When you publish it, Ellf builds an image on
+your cluster and registers the recipe, so it's listed in the web app next to
+the built-in recipes.
 
 ```bash
 cd services/marimo
@@ -27,90 +27,98 @@ pip install -e .
 ellf publish code . --package-version 0.1.0
 ```
 
-Then start it from the web app, or from the terminal.
+The marimo service opens notebooks that are registered as assets, so register
+at least one notebook before you start it. The
+[service README](services/marimo/README.md) explains how to register the
+included notebooks. You can then start the service in the web app, or from the
+command line.
 
 ```bash
-ellf services create marimo_notebook --name notebook --dataset your_dataset
-ellf services url notebook
+ellf services create marimo_notebook --name explore --notebook dataset_explorer
+ellf services url explore
 ```
 
-Every recipe takes `--help`, which lists the arguments it accepts.
+To see the arguments a recipe accepts, use `--help`.
 
 ```bash
 ellf services create marimo_notebook --help
 ```
 
-To work on a recipe before publishing it, the recipes SDK ships a dev CLI.
+To see the form a recipe generates without starting it, use `ellf-dev preview`.
+To run the tests, use pytest.
 
 ```bash
-ellf-dev preview marimo_notebook   # the creation form the recipe generates
-ellf-dev run marimo_notebook       # run it locally
+ellf-dev preview marimo_notebook
 python -m pytest tests -q
 ```
 
 ### Some things to try
 
-Start the notebook from the **Services** page in the web app and open it.
-Everything here happens in the browser, and your edits are saved to shared
-storage, so they outlive the service.
+Start the service from the **Services** page in the web app and open it. You
+work in the browser, and your changes are saved to shared storage, so they're
+kept after the service stops.
 
-- Edit **the query cell**, the one that flattens each annotation into columns.
-  Pull a field out of `meta`, count tokens, extract a score. Every cell below
-  it recomputes.
-- Change a chart. Swap `mark_bar` for `mark_point`, or add a facet.
-- Wrap a chart in `mo.ui.altair_chart` and it turns into an input, so clicking
-  a bar filters the table below it.
-- Add a cell that lists the assets on your cluster and reads one.
+- In the dataset explorer, edit the cell marked **the query**, which converts
+  each annotation into a row of a table. Add a value from `meta`, count tokens
+  or extract a score. When you run the cell, all cells that depend on it
+  update.
+- Change a chart, for example by replacing `mark_bar` with `mark_point` or
+  adding a facet.
+- Wrap a chart in `mo.ui.altair_chart` to make it selectable, so clicking a bar
+  filters the table below it.
+- Open the `blank` notebook to see how to list the datasets, assets and jobs on
+  your cluster.
 
-The creation form is worth playing with too.
+You can also try the options on the service form.
 
-- Put a name you haven't used in **Notebook file** and you get a blank
-  notebook, already wired up, with working examples for datasets, assets and
-  jobs.
-- Reuse a **Workspace** name to pick up where a colleague left off, or pick a
-  new one for a clean slate.
-- Tick **Share as a read-only app** to hand a finished analysis to people who
-  shouldn't be editing it.
+- To continue where you or a colleague left off, use the same **Workspace**
+  name. To start from the notebook as it was registered, use a new name.
+- Select **Share as a read-only app** to share a finished analysis with people
+  who shouldn't change it.
 
-To add a starter everyone can open, put your notebook in
-`ellf_notebook/notebooks/` and publish the package again.
+To add your own notebook, copy it to shared storage and register it as an
+asset of kind `notebook`. It's then listed on the service form next to the
+included notebooks.
 
 ## 🍳 Recipes
 
 ### Services
 
-Long-running services people open in a browser, behind the Ellf auth.
+Services run in the background, and people open them in a browser after
+logging in to Ellf.
 
 | Recipe | Description |
 | ------ | ----------- |
-| [`marimo_notebook`](services/marimo) | Runs a [marimo](https://marimo.io) notebook on your cluster, next to the annotation database and behind your auth. Notebooks are assets, so the picker lists what is really there, and each one asks for what it needs from inside the page. Ships notebooks for exploring a dataset, reading training results and doing error analysis. |
+| [`marimo_notebook`](services/marimo) | Runs a [marimo](https://marimo.io) notebook on your cluster, next to the Prodigy database and behind Ellf's authentication. Notebooks are registered as assets, so the form lists the notebooks on your cluster, and each notebook asks for the inputs it needs on the page. Includes notebooks for exploring a dataset and for viewing training results and errors. |
 
 ## 📚 What's in a recipe
 
-Each directory is a self-contained, installable package.
+Each directory is a self-contained package you can install.
 
 ```
 services/marimo/
 ├── setup.py               # declares the `ellf_recipes` entry point
-├── requirements.in        # only what Ellf's base image lacks
+├── requirements.in        # only what Ellf's base image doesn't include
 ├── ellf_notebook/
-│   ├── recipes/           # the @service_recipe itself
-│   ├── data.py            # wiring for datasets, assets, jobs, SDK client
-│   └── notebooks/         # starters, meant to be rewritten
+│   ├── recipes/           # the @service_recipe
+│   ├── types.py           # the notebook asset type
+│   ├── workspace.py       # where working copies are stored
+│   ├── data.py            # helpers for datasets, assets, jobs and the SDK client
+│   └── notebooks/         # example notebooks to register and adapt
 └── tests/                 # run without a cluster
 ```
 
-The recipe is wiring, and the interesting part is usually what it hands you. In
-`services/marimo` that part is `data.py`, which reaches a Prodigy dataset, an
-authenticated SDK client, assets and the cluster's jobs. The notebooks are
-examples of using it.
+The recipe itself only starts the notebook. The interesting part is what the
+notebooks can do with it. In `services/marimo`, that's `data.py`, which reads
+Prodigy datasets, creates an authenticated SDK client and lists the assets and
+jobs on your cluster. The notebooks show how to use it.
 
-Recipe requirements are installed on the cluster at publish time with
-`pip install --target`, which ignores what the base image already has. Anything
-in a `requirements.in` here is therefore downloaded in full and tarred into an
-image layer, so these files list only what's genuinely missing.
+When you publish a recipe, its requirements are installed into the recipe image
+again, even if the base image already includes them. This adds build time and
+increases the image size, so each `requirements.in` only lists what the base
+image doesn't include.
 
 ## 📄 License
 
 The recipe code in this repository is MIT licensed. Ellf and Prodigy are
-commercial products and are not.
+commercial products and aren't MIT licensed.

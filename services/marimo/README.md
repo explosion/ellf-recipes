@@ -21,7 +21,6 @@ services/marimo/
 └── ellf_notebook/
     ├── recipes/marimo_notebook.py      # the service, a notebook runner
     ├── types.py                        # the notebook asset type
-    ├── launcher.py                     # starting marimo
     ├── workspace.py                    # where working copies live on NFS
     ├── data.py                         # Prodigy and Ellf SDK plumbing
     ├── notebooks/dataset_explorer.py   # annotations in a dataset
@@ -32,9 +31,9 @@ services/marimo/
 ## What it demonstrates
 
 - **A custom service recipe with its own dependency.** `marimo` isn't included
-  in the base recipes image. `ellf publish code` reads it from the package
-  metadata, the broker installs it on the cluster and the result is added to a
-  new image as a layer. You don't need a Dockerfile or a local build.
+  in the base recipes image. When you run `ellf publish code`, Ellf reads it
+  from the package metadata and installs it into the recipe image on your
+  cluster. You don't need a Dockerfile or a local build.
 - **A service that runs its own server.** The recipe starts marimo's server and
   returns `None`. The SDK keeps the process running while the cluster routes
   requests to marimo's port and checks its health. The built-in Streamlit
@@ -62,9 +61,8 @@ package also needs to be importable from that environment, so run
 importing it.
 
 The first publish spends a few minutes on `Installing requirements on the
-cluster`, which installs marimo. The install is cached on NFS for each base
-image and set of requirements, so publishing again with the same dependencies
-skips this step.
+cluster`, which installs marimo. The install is cached on your cluster, so
+publishing again with the same requirements skips this step.
 
 Publishing registers the recipe but not the notebooks, so the notebook picker
 is empty at first. A notebook asset is a file on shared storage that's
@@ -124,7 +122,7 @@ notebook, it's listed in the picker next to these.
 | Notebook | Description |
 | --- | --- |
 | `dataset_explorer` | Shows the annotations in a dataset as a table you can filter, with statistics and charts. This is the most complete example, so it's a good place to start. |
-| `training_results` | Shows the scores of a training run from the `kind="results"` asset that the `train` recipe creates, and the examples the trained pipeline gets wrong. |
+| `training_results` | Shows the scores of a training run from the `kind="results"` asset that the `train` recipe creates, and the examples the trained pipeline gets wrong. The error analysis works for runs that trained a named entity recognizer and were evaluated on a separate evaluation dataset. You can edit it to analyze other components. |
 | `blank` | Shows how to access datasets, assets and jobs on your cluster, with a working example for each. |
 
 The registered asset is the source of the notebook. The service copies it into
@@ -174,39 +172,30 @@ that notebook and the same workspace name, or open it in marimo's file browser.
 
 ## How it works
 
-**Routing.** Requests to the service are routed through `/services/{job_id}/`,
-and Traefik removes that prefix before the request reaches the service. This
-means marimo is served from its own root and doesn't need `--base-url`. marimo's
-HTML uses relative paths like `./assets/...` and its frontend builds all API
-and websocket URLs from `document.baseURI`, so the prefix is kept in the
-browser. If a future version of marimo changes this, you can set `--base-url`
-and add a matching ingress rule.
+**Routing.** Each service is served under its own path in Ellf. marimo uses
+relative URLs, so it works under that path without any extra configuration.
 
-**Authentication.** The recipe sets `auth="session"`, so the ingress only lets
-in project members who are logged in to the web app. marimo's own token
-authentication is turned off, because it would ask users for a second password
-after they're already authenticated.
+**Authentication.** The recipe uses session authentication, so only project
+members who are logged in to Ellf can open the service. marimo's own token
+authentication is turned off, so users don't have to log in twice.
 
-**Persistence.** `workspace.py` resolves `{__nfs__}/marimo/<workspace>/` using
-`ELLF_BUILTIN_PATH_NFS`, which the broker sets on every recipe pod. The
-notebook asset's file is copied into the workspace the first time the service
-starts. After that, the working copy is never overwritten, so changes made in
-the browser are kept when the service restarts, the image is rebuilt or the
-package is published again. Registered notebooks are stored in
+**Persistence.** Service pods have an ephemeral filesystem, so the notebooks
+are stored on shared storage instead. Working copies are stored in
+`{__nfs__}/marimo/<workspace>/`, and registered notebooks in
 `{__nfs__}/marimo/starters/`, next to the workspaces, because they don't belong
 to any one workspace.
 
-**Credentials.** The service's environment already includes
-`PRODIGY_CONFIG_OVERRIDES` with the database connection and `ELLF_PAM_*` with a
-short-lived token for the user who started the service. The recipe passes the
-whole environment on to the marimo process, so the notebooks don't need any
-configuration.
+**Credentials.** The service has access to the Prodigy database on your
+cluster and a short-lived token for the user who started it. The recipe passes
+both on to the marimo process, so the notebooks don't need any configuration.
 
 ## Develop locally
 
 Install the package and the development requirements. `requirements.in` only
-lists what the cluster image doesn't include, so the recipes SDK and pytest are
-listed in `requirements-dev.in` and aren't installed by `pip install -e .`.
+lists what the cluster image doesn't include, so the recipes SDK, pandas,
+altair and pytest are listed in `requirements-dev.in` and aren't installed by
+`pip install -e .`. To read datasets locally, you also need Prodigy. The tests
+don't need it.
 
 ```bash
 pip install -e .
@@ -219,11 +208,13 @@ To edit one of the included notebooks, open it with marimo.
 marimo edit ellf_notebook/notebooks/dataset_explorer.py
 ```
 
-When you run a notebook locally, there's no Prodigy database or job token, so
-the notebooks can't read any datasets. Instead, they show an error that
-explains why the dataset couldn't be read and how to fix it. To read real
-annotations locally, set `PRODIGY_CONFIG_OVERRIDES` or a `prodigy.json` to
-point Prodigy to a database you can reach.
+When you run a notebook locally, there's no job token, so the sections that
+list datasets, assets and jobs are empty. Prodigy uses your local database,
+which is SQLite in `~/.prodigy` by default, so the datasets on your cluster
+aren't available. If a dataset can't be read, the notebooks show the error and
+how to fix it. To use a different database, set `db` and `db_settings` in your
+`prodigy.json`. For details, see the Prodigy docs on
+[database settings](https://prodi.gy/docs/api-database).
 
 To see the form the recipe generates for creating a service, without starting
 it, use `ellf-dev preview`.
@@ -236,9 +227,9 @@ ellf-dev preview marimo_notebook
 never calls the recipe, so nothing is started. To test the recipe itself,
 publish it to your cluster.
 
-If you edit one of the included notebooks, register it again to use the new
-version in new workspaces. Changes you make in the browser only affect that
-workspace.
+If you edit one of the included notebooks, copy it to shared storage again
+with `ellf files cp --overwrite` to use the new version in new workspaces.
+Changes you make in the browser only affect that workspace.
 
 To run the tests, use pytest.
 
@@ -254,16 +245,13 @@ python -m pytest tests -q
   other.
 - When the service stops, only the notebook file is kept, not the kernel state.
   To keep results, write them to the workspace directory, which is on NFS.
-- `requirements.in` only lists what the base image doesn't include. The cluster
-  installs the requirements with `pip install --target`, which ignores the
-  packages already in the image, and the broker then packs the result into an
-  image layer. Every extra requirement adds build time and increases the image
-  size. That's why `ellf-recipes-sdk` is listed in `requirements-dev.in`
-  instead. The base image already includes it, and listing it here would also
+- `requirements.in` only lists what the base recipes image doesn't include.
+  When you publish the package, every requirement is installed into the recipe
+  image again, even if the image already includes it, which adds build time
+  and increases the image size. That's why `ellf-recipes-sdk` is listed in
+  `requirements-dev.in` instead. Listing it in `requirements.in` would also
   install spaCy, boto3, google-cloud and psycopg2. The same applies to `pandas`
   and `altair`.
-- The broker builds the image layer in its event loop, and its liveness probe
-  allows about 90 seconds without a response. A large set of requirements can
-  block the broker long enough for it to be restarted while publishing, which
-  shows up as a read timeout or a 503 error from `POST /api/v1/envs/builds`.
-  Keep the requirements as small as possible to avoid this.
+- Publishing with a large set of requirements can time out. If publishing
+  fails with a timeout or a 503 error, remove any requirements the base image
+  already includes and publish again.

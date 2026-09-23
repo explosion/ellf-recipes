@@ -1,12 +1,11 @@
 # These requirements are installed into the recipe image when you publish the
-# package. `ellf publish code` reads them from the package metadata, and the
-# broker installs them on the cluster and adds them to the base image.
+# package. `ellf publish code` reads them from the package metadata and
+# installs them into the recipe image on your cluster.
 #
-# Only list what the base recipes image doesn't include. The requirements are
-# installed with `pip install --target`, which ignores the packages already in
-# the image, so every package listed here is downloaded again and added to the
-# image layer. `ellf-recipes-sdk` is in requirements-dev.in instead, because
-# listing it here would also install spaCy, boto3, google-cloud and psycopg2.
+# Only list what the base recipes image doesn't include. Every package listed
+# here is installed again, even if the image already includes it.
+# `ellf-recipes-sdk` is in requirements-dev.in instead, because listing it
+# here would also install spaCy, boto3, google-cloud and psycopg2.
 #
 # The notebooks also use pandas and altair, which the base image already
 # includes. Listing them here could replace the versions the rest of the image

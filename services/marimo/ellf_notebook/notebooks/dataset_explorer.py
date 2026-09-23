@@ -12,10 +12,10 @@ def _(mo):
     This notebook shows the annotations in a dataset on your cluster, with
     statistics, charts and a table you can filter.
 
-    You can **edit any cell** and the page updates as you type, for example to
-    change the query, add a column or change a chart. Your changes are saved
-    to the notebook file on shared storage, so they're kept after the service
-    stops.
+    You can **edit any cell**, for example to change the query, add a column or
+    change a chart. When you run a cell, all cells that depend on it update.
+    Your changes are saved to the notebook file on shared storage, so they're
+    kept after the service stops.
 
     The cells load the dataset, convert the annotations to a table, filter
     them and then visualize the results. To change which information is
@@ -39,10 +39,12 @@ def _():
 
 @app.cell(hide_code=True)
 def _(client, cluster, data, mo):
-    # The service doesn't pass in a dataset, so you choose one here. On your
-    # cluster, the dropdown lists the datasets the user who started the
-    # service has access to. If the notebook runs locally, you can type a name
-    # instead.
+    # The service doesn't pass in a dataset, so you choose one here. The
+    # dropdown lists the datasets on your cluster that the user who started
+    # the service has access to. If there's no list, for example because the
+    # notebook runs locally without a job token, you can type a name instead.
+    # The dataset is then read from the Prodigy database configured on your
+    # machine.
     names = sorted(
         d["name"] for d in data.cluster_datasets(client, cluster)
     ) if client is not None and cluster is not None else []
@@ -75,6 +77,11 @@ def _(auto_refresh, data, dataset_name, mo):
     # re-runs this cell and all cells that depend on it on every interval.
     auto_refresh
 
+    # Wait for a dataset name before reading anything.
+    mo.stop(
+        not dataset_name.value,
+        mo.md("_Enter the name of a dataset to explore its annotations._"),
+    )
     examples = data.load_examples(dataset_name.value)
 
     # If the dataset can't be read, `mo.stop` shows the error and the cells
@@ -90,9 +97,9 @@ def _(auto_refresh, data, dataset_name, mo):
     To troubleshoot this, check the following.
 
     - **The notebook is running on your cluster.** If you're running it
-      locally, there's no cluster database to connect to. Start it as a service
-      on your cluster, or set `PRODIGY_CONFIG_OVERRIDES` or a `prodigy.json` to
-      point Prodigy to a database you can reach.
+      locally, Prodigy uses your local database, which is SQLite in
+      `~/.prodigy` by default, so the datasets on your cluster aren't
+      available. Start the notebook as a service on your cluster instead.
     - **The dataset exists.** Choose a dataset from the list above, or run
       `ellf datasets list`.
     - **The database is reachable.** If you see a connection or authentication

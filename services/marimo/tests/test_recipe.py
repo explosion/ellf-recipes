@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ellf_notebook import launcher, workspace
+from ellf_notebook import workspace
 from ellf_notebook.recipes import marimo_notebook as recipe
 from ellf_notebook.types import Notebook
 
@@ -18,7 +18,7 @@ def launched(tmp_path, monkeypatch):
     monkeypatch.setenv(workspace.ROOT_ENV_VAR, str(tmp_path / "workspaces"))
     calls = []
     monkeypatch.setattr(
-        launcher.subprocess, "Popen", lambda argv, **kw: calls.append((argv, kw))
+        recipe.subprocess, "Popen", lambda argv, **kw: calls.append((argv, kw))
     )
     return calls
 
@@ -50,7 +50,7 @@ def test_the_recipe_opens_a_copy_of_the_notebook(launched, source, tmp_path):
     assert copy.read_text(encoding="utf8") == SOURCE_TEXT
     assert "edit" in argv
     assert str(copy) in argv
-    assert argv[argv.index("--port") + 1] == str(launcher.MARIMO_PORT)
+    assert argv[argv.index("--port") + 1] == str(recipe.MARIMO_PORT)
     assert kwargs["cwd"] == str(copy.parent)
 
 

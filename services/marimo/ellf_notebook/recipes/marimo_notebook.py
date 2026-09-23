@@ -14,11 +14,19 @@ schema builder reads the parameter annotations with ``inspect.signature`` and
 expects the actual classes, like ``Notebook``, not strings.
 """
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 from ellf_recipes_sdk import BoolProps, TextProps, service_recipe
 
-from ..launcher import MARIMO_PORT, launch
 from ..types import Notebook
-from ..workspace import DEFAULT_WORKSPACE
+from ..workspace import DEFAULT_WORKSPACE, resolve_workspace, seed_notebook
+
+#: marimo's default port. The cluster routes requests to it and checks its
+#: health.
+MARIMO_PORT = 2718
 
 
 @service_recipe(
@@ -62,7 +70,11 @@ def marimo_notebook(
     workspace: str = DEFAULT_WORKSPACE,
     read_only: bool = False,
 ) -> None:
-    """Open ``notebook`` in ``workspace`` and keep marimo running.
+    """Open ``notebook`` in ``workspace`` with marimo's own server.
+
+    marimo isn't an ASGI app, so the recipe starts its server and returns
+    ``None``. The SDK then keeps the recipe running while the cluster routes
+    requests to marimo's port.
 
     Args:
         notebook: The notebook to run. Its file is copied into the workspace
@@ -73,11 +85,44 @@ def marimo_notebook(
         read_only: Serve the notebook as an app instead of an editor.
 
     Returns:
-        ``None``, because this is a port-mode service.
+        ``None``, because the recipe runs its own server.
     """
-    return launch(
-        notebook=notebook.filename,
-        source=notebook.path,
-        workspace=workspace,
-        read_only=read_only,
+    workspace_dir = resolve_workspace(workspace)
+    notebook_path = seed_notebook(
+        workspace_dir, notebook.filename, Path(notebook.path)
     )
+
+    # The marimo process inherits the service's environment, which includes the
+    # Prodigy database connection and the user's credentials. This is why the
+    # notebooks work without any setup.
+    env = os.environ.copy()
+    # marimo creates its user settings when it starts. Storing them in the
+    # workspace means marimo doesn't need a writable home directory, and the
+    # settings are kept with the notebook.
+    for xdg_var in ("XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"):
+        env[xdg_var] = str(workspace_dir / ".marimo")
+
+    # ELLF_RECIPES_PORT overrides the port for local runs.
+    port = os.environ.get("ELLF_RECIPES_PORT", str(MARIMO_PORT))
+    argv = [
+        sys.executable, "-m", "marimo",
+        # There's no terminal to answer prompts, so answer yes to all of them.
+        "-y",
+        "run" if read_only else "edit",
+        str(notebook_path),
+        "--headless", "--host", "0.0.0.0", "--port", port,
+        # Ellf handles authentication, so marimo's own token is turned off.
+        "--no-token",
+    ]
+    if read_only:
+        # Show the code in the app. Anyone who can open the editor on the same
+        # workspace can already read it.
+        argv.append("--include-code")
+    else:
+        # A recipe pod can't install a new version of marimo.
+        argv.append("--skip-update-check")
+
+    # Run marimo in the workspace, so its file browser starts there and files a
+    # notebook writes are stored on shared storage.
+    subprocess.Popen(argv, cwd=str(workspace_dir), env=env)
+    return None

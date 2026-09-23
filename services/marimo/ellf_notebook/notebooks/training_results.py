@@ -16,6 +16,18 @@ def _(mo):
     asset that the `train` recipe saves with each pipeline, and the error
     analysis runs the pipeline itself over the annotations in a dataset.
 
+    The error analysis only works for runs that meet both of these
+    requirements.
+
+    - **The run trained a named entity recognizer.** The analysis compares the
+      entities the pipeline predicts to the annotated spans. To analyze other
+      components, like a text classifier, edit the error analysis cell to
+      compare their predictions to the annotations instead.
+    - **The run was evaluated on a separate evaluation dataset.** The analysis
+      needs the exact examples behind the scores. If the run held back part
+      of the training data for evaluation instead, or the evaluation data was
+      a file, those examples aren't available.
+
     You can click the bars in the charts to filter the tables below them.
     """)
     return
@@ -70,15 +82,20 @@ def _(data, run_picker):
         data.load_json_asset(run_picker.value["path"]) if run_picker.value else {}
     )
     performance = results.get("performance") or {}
+    # The `train` recipe registers the model as `<name>` and its scores as
+    # `<name>.results`, with the same version.
     model_name = (
         run_picker.value["name"].removesuffix(".results") if run_picker.value else ""
     )
-    return model_name, performance, results
+    model_version = run_picker.value["version"] if run_picker.value else ""
+    return model_name, model_version, performance, results
 
 
 @app.cell(hide_code=True)
-def _(mo, model_name, performance):
-    mo.md(f"Reporting on **{model_name}**.") if performance else mo.md("")
+def _(mo, model_name, model_version, performance):
+    mo.md(
+        f"Reporting on **{model_name}** version {model_version}."
+    ) if performance else mo.md("")
     return
 
 
@@ -149,13 +166,13 @@ def _(mo):
 
     The scores show how well the pipeline performs, and the error analysis
     shows the examples it gets wrong. It runs the pipeline over **the
-    evaluation set the scores above came from** and compares the predicted
-    entities to the annotated spans in the same text, so the mistakes below
-    are the mistakes behind those numbers.
+    evaluation dataset the scores above are based on** and compares the
+    predicted entities to the annotated spans in the same text. This means the
+    errors below are the errors behind those scores.
 
-    The dataset is read from the training config inside the model, not chosen
-    here. Scoring against anything else would give errors that do not
-    correspond to the scores.
+    The evaluation dataset is read from the training config saved with the
+    model, so you can't choose a different one here. Errors from another
+    dataset wouldn't match the scores.
 
     - A **false positive** is an entity that was predicted but not annotated.
     - A **false negative** is an entity that was annotated but not predicted.
@@ -167,11 +184,14 @@ def _(mo):
 
 
 @app.cell
-def _(client, cluster, data, model_name):
-    # Which pipeline this run produced, and what it was evaluated on. spaCy
-    # writes the training config into the model directory and the Prodigy
-    # readers record the dataset names there, so the provenance comes from the
-    # model asset. The results asset does not carry it.
+def _(client, cluster, data, model_name, model_version):
+    # Find the model asset of this run and the datasets it was evaluated on.
+    # spaCy saves the training config in the model directory, and Prodigy's
+    # corpus readers record the dataset names in it. The results asset doesn't
+    # include them, so they're read from the model. The version has to match
+    # too, because the same model name can be trained more than once. The
+    # error analysis compares entities, so it only uses the evaluation
+    # datasets of the named entity recognizer.
     model_assets = [
         a
         for a in (
@@ -179,49 +199,87 @@ def _(client, cluster, data, model_name):
             if client is not None
             else []
         )
-        if a["name"] == model_name
+        if a["name"] == model_name and a["version"] == model_version
     ]
     corpora = data.training_corpora(model_assets[0]["path"]) if model_assets else {}
-    eval_datasets = corpora.get("eval_datasets") or []
+    eval_datasets = (corpora.get("eval_datasets") or {}).get("ner") or []
     return corpora, eval_datasets, model_assets
 
 
 @app.cell(hide_code=True)
-def _(corpora, eval_datasets, mo, model_assets, model_name):
+def _(corpora, eval_datasets, mo, model_assets, model_name, model_version):
     if not model_assets:
         analysis_ready = False
         analysis_block = mo.callout(
             mo.md(f"""
-    **No model asset named `{model_name}` on this cluster.**
+    **No model asset named `{model_name}` with version {model_version} on this
+    cluster.**
 
-    The scores came from a run whose pipeline is no longer registered, so
-    there is nothing to score.
+    The pipeline of this run isn't registered anymore, so there's no model to
+    run the error analysis with.
+    """),
+            kind="warn",
+        )
+    elif not corpora:
+        analysis_ready = False
+        analysis_block = mo.callout(
+            mo.md(f"""
+    **Couldn't read the training config of `{model_name}`.**
+
+    The error analysis reads the evaluation datasets from the `config.cfg` in
+    the model directory. This model doesn't have a readable config, for example
+    because it was registered as a package instead of a directory.
+    """),
+            kind="warn",
+        )
+    elif "ner" not in corpora.get("datasets", {}):
+        analysis_ready = False
+        analysis_block = mo.callout(
+            mo.md("""
+    **This run didn't train a named entity recognizer.**
+
+    The error analysis compares predicted entities to annotated spans. To
+    analyze other components, edit the error analysis cell below.
+    """),
+            kind="warn",
+        )
+    elif any(d.startswith("__train_") for d in eval_datasets):
+        # If the evaluation data was a file instead of a dataset, the `train`
+        # recipe loads it into a temporary dataset named `__train_...` and
+        # deletes it after training, so it can't be read here.
+        analysis_ready = False
+        analysis_block = mo.callout(
+            mo.md("""
+    **The evaluation data of this run is no longer available.**
+
+    The run was evaluated on a file, which the `train` recipe loads into a
+    temporary dataset and deletes after training. To analyze errors, train
+    with the evaluation data saved as a dataset.
     """),
             kind="warn",
         )
     elif not eval_datasets:
         analysis_ready = False
+        eval_split = corpora.get("eval_split")
+        held_out = (
+            f"{eval_split:.0%}" if isinstance(eval_split, (int, float)) else "part"
+        )
         analysis_block = mo.callout(
             mo.md(f"""
-    **This run has no evaluation set to analyze.**
+    **This run has no evaluation dataset.**
 
-    It held out {corpora.get("eval_split")} of its training data instead of
-    using a named dataset. That split is seeded, so training would make the
-    same one again, but which examples it chose was never recorded and
-    rebuilding it here would mean copying Prodigy's internals and assuming the
-    datasets have not changed since.
-
-    Scoring the training data instead would flatter the model and produce
-    errors that do not match the scores, so this notebook doesn't offer it.
-    Train with a dedicated evaluation dataset to get error analysis on a
-    future run.
+    Instead of using a separate evaluation dataset, the run held back
+    {held_out} of the training data for evaluation. The examples in that split
+    can only be rebuilt if the training datasets haven't changed since, and
+    this notebook can't check that. To analyze errors, train with a separate
+    evaluation dataset.
     """),
             kind="warn",
         )
     else:
         analysis_ready = True
         joined = ", ".join(f"`{d}`" for d in eval_datasets)
-        analysis_block = mo.md(f"Evaluation set: {joined}")
+        analysis_block = mo.md(f"Evaluated on {joined}.")
     analysis_block
     return (analysis_ready,)
 
