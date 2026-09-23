@@ -36,8 +36,7 @@ services/marimo/
   cluster. You don't need a Dockerfile or a local build.
 - **A service that runs its own server.** The recipe starts marimo's server and
   returns `None`. The SDK keeps the process running while the cluster routes
-  requests to marimo's port and checks its health. The built-in Streamlit
-  dashboard works the same way.
+  requests to marimo's port and checks its health.
 - **Editable code that persists.** The notebook is a `.py` file on the shared
   NFS volume, not in the image. Changes made in the browser are kept after the
   service stops, the image is rebuilt or the package is published again.
@@ -57,8 +56,7 @@ The package version is read from `__version__` in `ellf_notebook/about.py`. To
 publish a new version, increase it first, because publishing an existing
 version fails with `PackageExists`.
 
-`ellf publish code` runs whichever `python` is first on your `PATH`, so
-activate the environment instead of calling the CLI by its absolute path. The
+`ellf publish code` runs whichever `python` is first on your `PATH`. The
 package also needs to be importable from that environment, so run
 `pip install -e .` first or set `PYTHONPATH=$PWD`. A directory with a
 `setup.py` is published as a distribution, and its metadata is built by
