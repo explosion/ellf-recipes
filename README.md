@@ -24,8 +24,12 @@ the built-in recipes.
 ```bash
 cd services/marimo
 pip install -e .
-ellf publish code . --package-version 0.1.0
+ellf publish code .
 ```
+
+The package version is read from `__version__` in the package's `about.py`. To
+publish a new version, increase it first, because publishing an existing
+version fails.
 
 The marimo service opens notebooks that are registered as assets, so register
 at least one notebook before you start it. The

@@ -1,6 +1,6 @@
 __title__ = "ellf_notebook"
 __name__ = "ellf_notebook"
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __summary__ = "Marimo notebook service recipe for Ellf"
 __uri__ = "https://github.com/explosion/ellf-recipes"
 __author__ = "Explosion"

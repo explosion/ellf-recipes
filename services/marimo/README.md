@@ -50,8 +50,12 @@ services/marimo/
 ```bash
 cd services/marimo
 pip install -e .
-ellf publish code . --package-version 0.1.0
+ellf publish code .
 ```
+
+The package version is read from `__version__` in `ellf_notebook/about.py`. To
+publish a new version, increase it first, because publishing an existing
+version fails with `PackageExists`.
 
 `ellf publish code` runs whichever `python` is first on your `PATH`, so
 activate the environment instead of calling the CLI by its absolute path. The
