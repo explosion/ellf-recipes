@@ -37,10 +37,6 @@ def setup_package():
         license=about["__license__"],
         packages=setuptools.find_packages(exclude=["tests"]),
         install_requires=requirements,
-        # The starter notebooks and the offline sample rows are read via
-        # __file__ and copied into the workspace at start time.
-        package_data={package_name: ["notebooks/*.py", "data/*.jsonl"]},
-        include_package_data=True,
         zip_safe=False,
         entry_points={
             # Add the recipe modules under the `ellf_recipes` entry point to ensure

@@ -9,13 +9,13 @@ def _(mo):
     mo.md(r"""
     # A new notebook
 
-    Everything below already works — it is a reference for reaching the three
-    kinds of Ellf object from inside a notebook. Delete what you don't need and
-    keep writing.
+    This notebook shows how to access **datasets, assets and jobs** on your
+    cluster from Python. Each section below is a working example you can keep,
+    edit or delete.
 
-    The pod you're running in was handed a short-lived token for whoever
-    started this service, so every call here is made *as that user* and sees
-    exactly what they're allowed to see. There is nothing to configure.
+    The service runs with a short-lived token for the user who started it, so
+    every request in this notebook is made on behalf of that user and can only
+    see what they have access to. You don't need to configure any credentials.
     """)
     return
 
@@ -36,9 +36,9 @@ def _():
 def _(client, cluster, mo):
     mo.callout(
         mo.md("""
-    **No job credentials in this environment.**
-    The platform sections below will be empty. Reading a dataset still works if
-    a Prodigy database is reachable; otherwise you get the bundled sample rows.
+    **No job credentials found in this environment.**
+    The sections that list datasets, assets and jobs will be empty. You can
+    still read a dataset if a Prodigy database is reachable.
     """),
         kind="warn",
     ) if client is None or cluster is None else mo.md(
@@ -52,31 +52,64 @@ def _(mo):
     mo.md(r"""
     ## 1. Datasets
 
-    A dataset is *annotations*, and they live in the cluster's Prodigy
-    database. `load_examples` hands you plain dicts — no typed-example API to
-    learn first.
+    Datasets are named collections of data and annotations in Prodigy's JSON
+    format, stored in the database on your cluster. `data.load_examples` reads
+    all examples in a dataset and returns them as a list of dictionaries.
     """)
     return
 
 
 @app.cell
-def _(data):
-    examples = data.load_examples(data.configured_dataset())
-
-    # examples.rows    -> list[dict], one per annotation
-    # examples.source  -> "prodigy" when real, "sample" when falling back
-    # examples.dataset -> the name that was read
-    examples.rows[:1]
-    return (examples,)
+def _(client, cluster, data, mo, pd):
+    # Ellf's record of the datasets on your cluster, newest first. This lists
+    # the datasets, not their contents.
+    datasets = data.cluster_datasets(client, cluster) if client is not None else []
+    mo.ui.table(pd.DataFrame(datasets), page_size=5) if datasets else mo.md(
+        "_No datasets on this cluster yet._"
+    )
+    return (datasets,)
 
 
 @app.cell
-def _(client, cluster, data, mo, pd):
-    # The *platform's* record of what datasets exist, which is a different
-    # question from what is inside one.
-    mo.ui.table(pd.DataFrame(data.cluster_datasets(client, cluster)), page_size=5) \
-        if client is not None else mo.md("_No client._")
-    return
+def _(data, datasets, mo):
+    # Change this to the name of the dataset you want to read. By default, it's
+    # the newest dataset on your cluster.
+    dataset_name = datasets[0]["name"] if datasets else ""
+    examples = data.load_examples(dataset_name)
+
+    # `examples.rows` is a list of dictionaries, one per annotation, and
+    # `examples.dataset` is the name of the dataset that was read. If the
+    # dataset can't be read, `examples.failed` is True, `examples.rows` is
+    # empty and `examples.error` explains why.
+    if not dataset_name:
+        dataset_view = mo.md(
+            "_Set `dataset_name` in this cell to read the annotations in a dataset._"
+        )
+    elif examples.failed:
+        dataset_view = mo.callout(
+            mo.md(f"""
+    **Couldn't connect to the Prodigy database.**
+
+    `{examples.error or "Unknown error."}`
+
+    To troubleshoot this, check the following.
+
+    - **The notebook is running on your cluster.** If you're running it
+      locally, there's no cluster database to connect to. Start it as a service
+      on your cluster, or set `PRODIGY_CONFIG_OVERRIDES` or a `prodigy.json` to
+      point Prodigy to a database you can reach.
+    - **The dataset exists.** Compare the name to the datasets listed above, or
+      run `ellf datasets list`.
+    - **The database is reachable.** If you see a connection or authentication
+      error, restart the service. If the error persists, run
+      `ellf clusters check` to check the health of your cluster.
+    """),
+            kind="danger",
+        )
+    else:
+        dataset_view = examples.rows[:1]
+    dataset_view
+    return (examples,)
 
 
 @app.cell(hide_code=True)
@@ -84,10 +117,10 @@ def _(mo):
     mo.md(r"""
     ## 2. Assets
 
-    An asset is the platform's record of a *file* on shared storage: a trained
-    model, a results JSON, a PDF, a patterns file. The `path` you get back is
-    already a concrete mount this pod can read, so there is no download step
-    and no alias to resolve.
+    Assets are pointers to data resources registered with Ellf, like input
+    files, patterns, PDFs and trained models. `data.cluster_assets` returns
+    each asset with its `path` resolved to a location on shared storage, so
+    you can open the file directly from this notebook.
     """)
     return
 
@@ -96,9 +129,8 @@ def _(mo):
 def _(client, cluster, data, mo, pd):
     assets = data.cluster_assets(client, cluster) if client is not None else []
 
-    # Filter by kind when you know what you're after:
-    #   data.cluster_assets(client, cluster, kind="model")
-    #   data.cluster_assets(client, cluster, kind="results")
+    # To only list assets of a given kind, pass it as `kind`, for example
+    # `data.cluster_assets(client, cluster, kind="model")`.
     mo.ui.table(pd.DataFrame(assets), page_size=5) if assets else mo.md(
         "_No assets on this cluster yet._"
     )
@@ -109,9 +141,9 @@ def _(client, cluster, data, mo, pd):
 def _(assets, mo):
     from pathlib import Path
 
-    # An asset's contents are a plain file read. This previews the first one;
-    # `data.load_json_asset(path)` is the shortcut for JSON, and
-    # `data.load_model(path)` loads a spaCy pipeline from a kind="model" asset.
+    # You can read an asset like any other file. This previews the first one.
+    # For JSON assets, use `data.load_json_asset(path)`, and for kind="model"
+    # assets, use `data.load_model(path)` to load the spaCy pipeline.
     preview = (
         Path(assets[0]["path"]).read_text(encoding="utf8")[:400]
         if assets and Path(assets[0]["path"]).exists()
@@ -126,9 +158,10 @@ def _(mo):
     mo.md(r"""
     ## 3. Jobs
 
-    Tasks (annotation servers people open) and actions (batch jobs that run to
-    completion) listed together — usually what you want when the question is
-    "what has been run on this cluster".
+    Tasks start annotation servers that annotators connect to, and actions run
+    workflows like training to completion. `data.cluster_jobs` lists both in
+    one table, newest first, so you can see what has been run. Actions are
+    limited to your cluster, and tasks include all tasks you have access to.
     """)
     return
 
@@ -147,14 +180,15 @@ def _(mo):
     mo.md(r"""
     ## Going further
 
-    `client` is the full Ellf SDK client, so anything the platform exposes is
-    reachable — `client.project`, `client.recipe`, `client.package`,
-    `client.secret` and the rest all follow the same
-    `client.<thing>.all(<Thing>Reading(cluster_id=cluster))` shape.
+    `client` is the full Ellf SDK client, so you can use it to access anything
+    else in Ellf, like projects, recipes, packages and secrets. For example,
+    `client.package.all(PackageReading(cluster_id=cluster))` lists the
+    packages on your cluster, and `PackageReading` is imported from
+    `ellf_pam_sdk.models`.
 
-    For worked examples, open `dataset_explorer.py` (annotations) or
-    `training_results.py` (model scores and error analysis) in this same
-    workspace.
+    For more complete examples, start a service with the `dataset_explorer`
+    notebook to explore the annotations in a dataset, or with the
+    `training_results` notebook to view model scores and analyze errors.
     """)
     return
 

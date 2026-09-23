@@ -9,15 +9,17 @@ def _(mo):
     mo.md(r"""
     # Dataset explorer
 
-    A live view of one annotation dataset, computed on the cluster.
+    This notebook shows the annotations in a dataset on your cluster, with
+    statistics, charts and a table you can filter.
 
-    **This notebook is yours to change.** Every cell below is editable and the
-    page recomputes as you edit — change the query, add a column, swap the
-    chart. Edits are saved to the notebook file on shared storage, so they
-    outlive this service.
+    You can **edit any cell** and the page updates as you type, for example to
+    change the query, add a column or change a chart. Your changes are saved
+    to the notebook file on shared storage, so they're kept after the service
+    stops.
 
-    The cells are ordered the way you'd work: *connect → shape → filter →
-    look*. The one marked **the query** is the one to reach for first.
+    The cells load the dataset, convert the annotations to a table, filter
+    them and then visualize the results. To change which information is
+    extracted from each annotation, start with the cell marked **the query**.
     """)
     return
 
@@ -37,9 +39,10 @@ def _():
 
 @app.cell(hide_code=True)
 def _(client, cluster, data, mo):
-    # The service does not pass a dataset, so the notebook asks. On a cluster
-    # that means a list of what is actually there, read as the user who
-    # started the job, and off-cluster it falls back to typing a name.
+    # The service doesn't pass in a dataset, so you choose one here. On your
+    # cluster, the dropdown lists the datasets the user who started the
+    # service has access to. If the notebook runs locally, you can type a name
+    # instead.
     names = sorted(
         d["name"] for d in data.cluster_datasets(client, cluster)
     ) if client is not None and cluster is not None else []
@@ -51,13 +54,14 @@ def _(client, cluster, data, mo):
         )
         if names
         else mo.ui.text(
-            value=data.configured_dataset("sample_annotations"),
+            value="",
             label="Dataset",
             full_width=False,
         )
     )
-    # Annotation is happening *now*, so offer to re-read on an interval. "off"
-    # is the default: a notebook you're editing shouldn't re-run under you.
+    # To see new annotations as they come in, you can re-read the dataset on
+    # an interval. It's off by default, so the notebook doesn't re-run while
+    # you're editing it.
     auto_refresh = mo.ui.refresh(
         options=["10s", "30s", "2m"], default_interval=None, label="Auto-refresh"
     )
@@ -66,49 +70,63 @@ def _(client, cluster, data, mo):
 
 
 @app.cell
-def _(auto_refresh, data, dataset_name):
-    # Referencing `auto_refresh` is what subscribes this cell to the timer:
-    # when it ticks, marimo re-runs this cell and everything downstream.
+def _(auto_refresh, data, dataset_name, mo):
+    # Referencing `auto_refresh` makes this cell depend on the timer, so marimo
+    # re-runs this cell and all cells that depend on it on every interval.
     auto_refresh
 
     examples = data.load_examples(dataset_name.value)
+
+    # If the dataset can't be read, `mo.stop` shows the error and the cells
+    # below don't run.
+    mo.stop(
+        examples.failed,
+        mo.callout(
+            mo.md(f"""
+    **Couldn't read annotations from the Prodigy database.**
+
+    `{examples.error}`
+
+    To troubleshoot this, check the following.
+
+    - **The notebook is running on your cluster.** If you're running it
+      locally, there's no cluster database to connect to. Start it as a service
+      on your cluster, or set `PRODIGY_CONFIG_OVERRIDES` or a `prodigy.json` to
+      point Prodigy to a database you can reach.
+    - **The dataset exists.** Choose a dataset from the list above, or run
+      `ellf datasets list`.
+    - **The database is reachable.** If you see a connection or authentication
+      error, restart the service. If the error persists, run
+      `ellf clusters check` to check the health of your cluster.
+    """),
+            kind="danger",
+        ),
+    )
     return (examples,)
 
 
 @app.cell(hide_code=True)
 def _(examples, mo):
-    mo.callout(
-        mo.md(
-            f"""
-    **Showing bundled sample rows, not your data.**
-    {examples.error}
-
-    This happens when the notebook runs off-cluster, or when the dataset can't
-    be read. Everything below still works — it just isn't your dataset.
-    """
-        ),
-        kind="warn",
-    ) if examples.is_sample else mo.md(
-        f"**{len(examples.rows)}** annotations in `{examples.dataset}`."
-    )
+    mo.md(f"**{len(examples.rows)}** annotations in `{examples.dataset}`.")
     return
 
 
 @app.cell
 def _(examples, pd):
-    # ─── the query ────────────────────────────────────────────────────────────
-    # One row in, one row out: flatten each Prodigy annotation into the columns
-    # you want to slice by. This is the cell to edit — add a column from
-    # `meta`, pull a score out, count tokens, whatever the question needs.
+    # The query
     #
-    # Every annotation is a plain dict. To see what's actually in one:
-    #     examples.rows[0]
+    # This cell converts each annotation into one row of a table, with the
+    # columns you want to filter and group by. Edit `to_record` to add your own
+    # columns, for example a value from `meta`, a score or a token count.
+    #
+    # Each annotation is a dictionary in Prodigy's JSON format. To inspect one,
+    # run `examples.rows[0]` in a new cell.
 
     def labels_of(eg):
-        # Where the labels live depends on the interface: spans for
-        # ner/spancat, a single `label` for classification, `accept` for the
-        # choice interfaces. Taking all three means this works on whatever
-        # dataset you point it at.
+        # Where the labels are stored depends on the annotation interface. The
+        # ner and spancat interfaces use `spans`, classification uses `label`
+        # and choice uses `accept`. Reading all three lets this work with any
+        # dataset.
         labels = {span["label"] for span in (eg.get("spans") or []) if "label" in span}
         if eg.get("label"):
             labels.add(eg["label"])
@@ -176,7 +194,7 @@ def _(mo, view):
             mo.stat(total, label="Annotations", bordered=True),
             mo.stat(accepted, label="Accepted", bordered=True),
             mo.stat(
-                f"{accepted / total:.0%}" if total else "—",
+                f"{accepted / total:.0%}" if total else "N/A",
                 label="Accept rate",
                 bordered=True,
             ),
@@ -194,12 +212,12 @@ def _(mo, view):
 
 @app.cell
 def _(alt, mo, pd, view):
-    # ─── the charts ───────────────────────────────────────────────────────────
-    # Plain Altair, wrapped in `mo.ui.altair_chart`. The wrapper is what turns
-    # a chart into an *input*: whatever you click or brush becomes
-    # `label_chart.value`, a dataframe of just those rows, and the table at the
-    # bottom reads it. Change the encodings, swap `mark_bar` for `mark_point`,
-    # add a facet — the page re-renders on save.
+    # The charts
+    #
+    # The charts use Altair. Wrapping a chart in `mo.ui.altair_chart` lets you
+    # select data in it. The rows you click or brush are available as
+    # `label_chart.value`, which the table at the bottom uses. You can change
+    # the encodings, mark type or facets, and the page updates when you save.
 
     label_counts = (
         pd.DataFrame(
@@ -246,8 +264,8 @@ def _(alt, mo, pd, view):
 
 @app.cell(hide_code=True)
 def _(label_chart, mo, view):
-    # Click a bar in the chart above and this table narrows to those
-    # annotations; click away to get everything back.
+    # Click a bar in the chart above to only show those annotations in this
+    # table. Click outside the bars to show all annotations again.
     picked = label_chart.value
     rows = (
         view[view["labels"].apply(lambda ls: bool(set(picked["label"]) & set(ls)))]
@@ -263,10 +281,10 @@ def _(mo):
     mo.md(r"""
     ## The rest of the cluster
 
-    The notebook runs inside a job pod, which is handed a short-lived token for
-    the user who started it. The Ellf SDK picks that up on its own, so listing
-    what's on the cluster is two lines — and you only ever see what you're
-    allowed to see.
+    The service runs with a short-lived token for the user who started it, and
+    the Ellf SDK uses this token automatically. This means you can list what's
+    on your cluster without configuring any credentials, and you only see what
+    that user has access to.
     """)
     return
 
@@ -275,7 +293,7 @@ def _(mo):
 def _(client, cluster, data, mo, pd):
     if client is None or cluster is None:
         cluster_view = mo.md(
-            "_No job credentials in this environment — running off-cluster._"
+            "_No job credentials found. The notebook is running locally._"
         )
     else:
         cluster_view = mo.ui.table(

@@ -1,23 +1,17 @@
-"""Service recipe: run a marimo notebook on your cluster.
+"""Service recipe that runs a marimo notebook on your cluster.
 
-A notebook runner, and deliberately nothing more. It asks which notebook and
-where to keep the working copy, and that is all. What a notebook needs in
-order to do its job, a dataset to read or a model to score, it asks for
-itself, from inside the page, using the Ellf SDK it is already authenticated
-against.
+The service asks which notebook to open and where to keep the working copy. If
+a notebook needs anything else, like a dataset to read or a model to score, it
+asks for it on the page, using the Ellf SDK. This way, each notebook can offer
+exactly the inputs it needs, and you can change them without publishing the
+package again.
 
-Putting those on this form instead would mean one set of arguments for every
-notebook anyone ever writes, which fits none of them. A notebook that wants a
-dataset and a date range and two thresholds can offer exactly that, as marimo
-widgets, and change its mind without republishing anything.
+Notebooks are registered as assets, so the form lists the notebooks on your
+cluster. When you register your own notebook, it's listed there too.
 
-The notebook itself is an asset, so the form lists what is actually on the
-cluster rather than what happened to ship in this package. Registering your
-own notebook makes it appear in the picker.
-
-Avoid ``from __future__ import annotations`` here -- the recipe schema builder
-reads parameter annotations live via ``inspect.signature`` and expects the
-actual classes (``Notebook``), not strings.
+Don't use ``from __future__ import annotations`` in this module. The recipe
+schema builder reads the parameter annotations with ``inspect.signature`` and
+expects the actual classes, like ``Notebook``, not strings.
 """
 
 from ellf_recipes_sdk import BoolProps, TextProps, service_recipe
@@ -29,13 +23,13 @@ from ..workspace import DEFAULT_WORKSPACE
 
 @service_recipe(
     title="Marimo Notebook",
-    # Recipe descriptions are stored in a varchar(255), and nothing checks
-    # that before the insert, so going over shows up as a 500 at publish time.
+    # Recipe descriptions are limited to 255 characters. A longer description
+    # isn't rejected before it's saved, so publishing fails with a 500 error.
     description=(
-        "Run a marimo notebook on your cluster, next to the annotation "
-        "database and behind your auth. Pick a notebook and it opens in the "
-        "browser, editable, with charts recomputing as you type. Edits are "
-        "saved to shared storage."
+        "Run a marimo notebook on your cluster, next to the Prodigy database "
+        "and behind Ellf's authentication. Edit the notebook in your browser "
+        "and see the results update as you type. Changes are saved to shared "
+        "storage."
     ),
     port=MARIMO_PORT,
     healthcheck_path="/health",
@@ -45,10 +39,10 @@ from ..workspace import DEFAULT_WORKSPACE
         "workspace": TextProps(
             title="Workspace",
             description=(
-                "Folder on shared storage holding the working copy and "
-                "anything it writes. Reuse a workspace name to pick up where "
-                "you (or a colleague) left off, or pick a new one to start "
-                "from the notebook as it was registered."
+                "Folder on shared storage for the working copy and any files "
+                "the notebook writes. To continue where you or a colleague "
+                "left off, use the same name. To start from the notebook as it "
+                "was registered, use a new name."
             ),
             placeholder=DEFAULT_WORKSPACE,
         ),
@@ -57,8 +51,7 @@ from ..workspace import DEFAULT_WORKSPACE
             description=(
                 "Serve the notebook as an app instead of an editor, so "
                 "viewers can use its controls and read the code but not "
-                "change it. Use this to hand a finished analysis to a wider "
-                "audience."
+                "change it. Use this to share a finished analysis."
             ),
         ),
     },
@@ -72,12 +65,12 @@ def marimo_notebook(
     """Open ``notebook`` in ``workspace`` and keep marimo running.
 
     Args:
-        notebook: The notebook to run. Its file is the source, copied into the
-            workspace on first use so that editing it here cannot disturb
-            anybody else running the same notebook elsewhere.
-        workspace: Name of the folder on shared storage to keep the working
-            copy in.
-        read_only: Serve as a read-only app rather than an editor.
+        notebook: The notebook to run. Its file is copied into the workspace
+            the first time, so changes don't affect anyone using the same
+            notebook in another workspace.
+        workspace: The name of the folder on shared storage for the working
+            copy.
+        read_only: Serve the notebook as an app instead of an editor.
 
     Returns:
         ``None``, because this is a port-mode service.
@@ -87,5 +80,4 @@ def marimo_notebook(
         source=notebook.path,
         workspace=workspace,
         read_only=read_only,
-        env_extra={"ELLF_MARIMO_NOTEBOOK": notebook.name},
     )

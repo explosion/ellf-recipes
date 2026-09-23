@@ -1,5 +1,5 @@
-# Local development only -- not installed into the recipe image.
-# The SDK lives here rather than in requirements.in because the base recipes
-# image already provides it; see the note there.
+# Requirements for local development, which aren't installed into the recipe
+# image. The base recipes image already includes the SDK, so it's listed here
+# instead of in requirements.in.
 ellf-recipes-sdk >= 0.1.2
 pytest

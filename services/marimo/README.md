@@ -1,22 +1,22 @@
 # marimo notebook service
 
-A custom recipe package that runs a [marimo](https://marimo.io) notebook as an
-Ellf service. Project members open it from the web app, edit the code and the
-queries in place, and watch the charts recompute, all inside the cluster, next
-to the Prodigy database and behind the platform's auth.
+This package contains a custom recipe that runs a [marimo](https://marimo.io)
+notebook as an Ellf service. Project members can open the notebook from the web
+app, edit its code and queries and see the charts update. The notebook runs on
+your cluster, next to the Prodigy database and behind Ellf's authentication.
 
-Nothing here touches the Ellf source tree. It is a standalone package with its
-own `setup.py` and its own requirements, published the way any customer would
-publish their own recipes.
+The package doesn't depend on the Ellf source tree. It has its own `setup.py`
+and requirements and is published the same way as any other custom recipe
+package.
 
-> ✨ **Important note.** Anyone who can open this service can run arbitrary
-> Python inside your cluster, as the user who started the job. That is what a
-> notebook is. It is why the recipe is limited to project members by default,
-> and why a read-only mode exists for a wider audience.
+> **Important.** Anyone who can open this service can run any Python code on
+> your cluster, as the user who started the service. This is how notebooks
+> work, so the recipe is limited to project members by default. To share a
+> notebook with a wider audience, use the read-only mode.
 
 ```
 services/marimo/
-├── setup.py                            # standard custom-recipe packaging
+├── setup.py                            # standard custom recipe packaging
 ├── requirements.in                     # marimo, installed into the image on publish
 └── ellf_notebook/
     ├── recipes/marimo_notebook.py      # the service, a notebook runner
@@ -26,25 +26,25 @@ services/marimo/
     ├── data.py                         # Prodigy and Ellf SDK plumbing
     ├── notebooks/dataset_explorer.py   # annotations in a dataset
     ├── notebooks/training_results.py   # scores and error analysis
-    ├── notebooks/blank.py              # reaching datasets, assets and jobs
-    └── data/sample_annotations.jsonl   # off-cluster fallback rows
+    └── notebooks/blank.py              # reaching datasets, assets and jobs
 ```
 
 ## What it demonstrates
 
-- **A custom service recipe with its own dependency.** `marimo` isn't in the
-  base recipes image. `ellf publish code` reads it off the package metadata,
-  the broker pip-installs it on the cluster inside the base image, and the
-  result is layered into a new image. No Dockerfile, no local build.
-- **A port-mode service.** The recipe starts marimo's own server and returns
-  `None`, and the SDK keeps the process alive while the cluster routes and
-  health-checks marimo's port. Same shape as the built-in Streamlit dashboard.
-- **User-editable code that survives.** The notebook is a plain `.py` on the
-  shared NFS volume, not in the image. Edits made in the browser outlive the
-  service, an image rebuild, and a republish of this package.
-- **Data access without setup.** The pod already has the Prodigy database
-  connection and a job token for the user who started it, so reading a dataset
-  is one call and listing what's on the cluster is two.
+- **A custom service recipe with its own dependency.** `marimo` isn't included
+  in the base recipes image. `ellf publish code` reads it from the package
+  metadata, the broker installs it on the cluster and the result is added to a
+  new image as a layer. You don't need a Dockerfile or a local build.
+- **A service that runs its own server.** The recipe starts marimo's server and
+  returns `None`. The SDK keeps the process running while the cluster routes
+  requests to marimo's port and checks its health. The built-in Streamlit
+  dashboard works the same way.
+- **Editable code that persists.** The notebook is a `.py` file on the shared
+  NFS volume, not in the image. Changes made in the browser are kept after the
+  service stops, the image is rebuilt or the package is published again.
+- **Data access without setup.** The service already has the Prodigy database
+  connection and a token for the user who started it. Reading a dataset takes
+  one call, and listing what's on your cluster takes two.
 
 ## Publish and run
 
@@ -54,21 +54,22 @@ pip install -e .
 ellf publish code . --package-version 0.1.0
 ```
 
-`ellf publish code` shells out to whatever `python` resolves to on `PATH`, so
-activate the environment rather than calling the CLI by absolute path, and make
-sure the package is importable from it. Either `pip install -e .` first, or
-`PYTHONPATH=$PWD`. A directory with a `setup.py` is published as a
-distribution, and a distribution is expected to be importable when its metadata
-is built.
+`ellf publish code` runs whichever `python` is first on your `PATH`, so
+activate the environment instead of calling the CLI by its absolute path. The
+package also needs to be importable from that environment, so run
+`pip install -e .` first or set `PYTHONPATH=$PWD`. A directory with a
+`setup.py` is published as a distribution, and its metadata is built by
+importing it.
 
 The first publish spends a few minutes on `Installing requirements on the
-cluster`, which is marimo. The install is cached on NFS by base image and
-requirement set, so republishing unchanged dependencies skips it.
+cluster`, which installs marimo. The install is cached on NFS for each base
+image and set of requirements, so publishing again with the same dependencies
+skips this step.
 
-Publishing registers the recipe, not the notebooks, so the picker starts
-empty. A notebook asset is a file on shared storage plus a reference to it,
-and registering one is two ordinary commands. The same two register a notebook
-you wrote yourself, which is the point.
+Publishing registers the recipe but not the notebooks, so the notebook picker
+is empty at first. A notebook asset is a file on shared storage that's
+registered with Ellf. You can register the included notebooks, or your own,
+with two commands.
 
 ```bash
 ellf files cp ellf_notebook/notebooks/dataset_explorer.py \
@@ -77,14 +78,15 @@ ellf assets create dataset_explorer \
     "{__nfs__}/marimo/starters/dataset_explorer.py" --kind notebook
 ```
 
-Repeat for `training_results.py` and `blank.py`, or for anything else you want
-in the picker. `--make-dirs` is needed the first time, because nothing has
-created that folder yet. `ellf assets create` stores a reference and moves no
-data, so the file has to be on shared storage before you register it, and
-`--overwrite` on a later copy changes what new workspaces start from without
-touching anyone's working copy.
+Repeat this for `training_results.py` and `blank.py`, or for any other notebook
+you want to add to the picker. You only need `--make-dirs` the first time, to
+create the folder. `ellf assets create` only stores a reference to the file and
+doesn't copy any data, so the file has to be on shared storage before you
+register it. If you copy a new version of a notebook with `--overwrite`, new
+workspaces start from the new version and existing working copies stay the
+same.
 
-Then start a service on any of them.
+You can then start a service with any of the registered notebooks.
 
 ```bash
 ellf services create marimo_notebook --help
@@ -92,166 +94,176 @@ ellf services create marimo_notebook --name explore --notebook dataset_explorer 
 ellf services url explore
 ```
 
-Or create it from the web app, where the recipe shows up under Services with a
-form built from its signature. Open the URL as a logged-in project member and
-the notebook is there.
+You can also create the service in the web app, where the recipe is listed
+under Services with a form based on its arguments. When you open the service
+URL as a logged in project member, the notebook opens in your browser.
 
-`workspace` is the folder on shared storage holding the working copy. Reuse a
-name to pick up where you or a colleague left off, or pick a new one to start
-from the notebook as it was registered. `read_only` serves the notebook as an
-app rather than an editor, for handing a finished analysis to people who
-should not be changing it.
+The `workspace` argument is the name of the folder on shared storage that holds
+the working copy of the notebook. To continue where you or a colleague left off,
+use the same workspace name. To start from the notebook as it was registered,
+use a new name. The `read_only` argument serves the notebook as an app instead
+of an editor, so you can share a finished analysis with people who shouldn't
+change it.
 
 ## Notebooks are assets
 
-The service is a notebook runner and nothing more. It asks which notebook and
-where to keep the working copy. What a notebook needs in order to do its job,
-a dataset to read or a training run to report on, it asks for itself, from
-inside the page, using the Ellf SDK it is already authenticated against.
+The service only runs notebooks. Its form asks which notebook to open and where
+to keep the working copy. If a notebook needs anything else, like a dataset to
+read or a training run to report on, it asks for it on the page, using the Ellf
+SDK.
 
-Putting those on the form instead would mean one set of arguments for every
-notebook anyone ever writes, which fits none of them. A notebook that wants a
-dataset and a date range and two thresholds can offer exactly that, as marimo
-widgets, and change its mind without republishing anything.
+If the service form asked for these instead, it would need the same arguments
+for every notebook. Each notebook can offer exactly the inputs it needs as
+marimo widgets, for example a dataset, a date range and two thresholds, and you
+can change them without publishing the package again.
 
-The notebook itself is an asset, which is what makes the picker list what is
-really on your cluster rather than what happened to ship here. Register a
-notebook you wrote and it appears alongside these.
+Notebooks are registered as assets, so the picker lists the notebooks on your
+cluster, not only the ones in this repository. When you register your own
+notebook, it's listed in the picker next to these.
 
-| Notebook | What it's for |
+| Notebook | Description |
 | --- | --- |
-| `dataset_explorer` | The annotations in one dataset. Flatten, filter, chart, browse. The worked example, so start here. |
-| `training_results` | What a training run scored, then which examples the model gets wrong. Lists the `kind="results"` assets the `train` recipe writes, and scores the matching pipeline against a dataset. |
-| `blank` | A reference for reaching the three kinds of Ellf object, datasets, assets and jobs, with a working call for each. |
+| `dataset_explorer` | Shows the annotations in a dataset as a table you can filter, with statistics and charts. This is the most complete example, so it's a good place to start. |
+| `training_results` | Shows the scores of a training run from the `kind="results"` asset that the `train` recipe creates, and the examples the trained pipeline gets wrong. |
+| `blank` | Shows how to access datasets, assets and jobs on your cluster, with a working example for each. |
 
-An asset is the *source*. The service copies it into the workspace the first
-time and never overwrites the copy again, so the file you edit in the browser
-is yours and two people opening the same notebook do not write over each
-other. Re-registering a notebook changes what *new* workspaces start from and
-leaves existing ones alone.
+The registered asset is the source of the notebook. The service copies it into
+the workspace the first time the notebook is opened and never overwrites that
+copy, so each workspace has its own working copy and people using different
+workspaces don't overwrite each other's changes. If you register a new version
+of a notebook, new workspaces start from that version and existing ones stay
+the same.
 
-### Charts are inputs, not output
+### Selecting data in charts
 
-Both analysis notebooks wrap their charts in `mo.ui.altair_chart`. That makes a
-chart's selection a Python value. `chart.value` is a dataframe of exactly the
-rows you clicked or brushed, and the table below reads it. Click a label bar in
-the explorer and the annotation table narrows to that label. Click a bar in the
-error chart and you get those specific mistakes.
+The analysis notebooks create their charts with `mo.ui.altair_chart`, which
+lets you select data in a chart and use the selection in Python. The
+`chart.value` attribute is a dataframe with the rows you clicked or brushed,
+and the table below the chart uses it. In the dataset explorer, you can click a
+label to only show annotations with that label. In the training results, you
+can click a bar in the errors chart to see those errors.
 
-This is the thing a notebook does that a dashboard doesn't, and it is one line
-of difference. Write `mo.ui.altair_chart(chart)` instead of `chart`.
+To make your own charts selectable, use `mo.ui.altair_chart(chart)` instead of
+`chart`.
 
-## Using the explorer
+## Using the dataset explorer
 
-The starter notebook is ordered the way you'd work, from connect to shape to
-filter to look.
+The cells in the dataset explorer load a dataset, convert the annotations to a
+table, filter them and then visualize the results.
 
-1. A dataset picker and an auto-refresh interval sit at the top. The picker
-   lists the datasets on your cluster, read as the user who started the
-   service, so it shows what you are allowed to see and nothing else.
-   Annotation happening right now shows up on the next refresh.
-2. **The query** is one cell that flattens each Prodigy annotation into the
-   columns you want to slice by. This is the cell to edit first. Add a field
-   from `meta`, pull out a score, count tokens.
-3. Filters for labels, annotators and decisions, driven by whatever the query
-   produced.
-4. Charts and a searchable, downloadable table.
-5. A last cell that asks the platform rather than the annotation database what
-   is on the cluster, through the Ellf SDK, authenticated as you.
+1. At the top, you can choose a dataset and how often to reload it. The list
+   shows the datasets that the user who started the service has access to. If
+   you set a reload interval, new annotations are shown as they come in.
+2. The cell marked **the query** converts each annotation into one row of a
+   table, with the columns you want to filter and group by. Start here to
+   change the notebook, for example to add a value from `meta`, a score or a
+   token count.
+3. The filters for labels, annotators and decisions are based on the columns
+   the query creates.
+4. The charts and table show the filtered annotations. You can search the
+   table and download it.
+5. The last cell uses the Ellf SDK to list the datasets on your cluster, as
+   the user who started the service.
 
-Everything is reactive, so changing a cell re-runs every cell that depends on
-it. There is no hidden state to get out of sync, which is the reason for marimo
-over Jupyter here.
+When you change a cell, marimo runs all cells that depend on it again. This
+means the notebook never shows results from an earlier version of the code,
+which is why this service uses marimo instead of Jupyter.
 
-To work on a second notebook in the same workspace, start another service on
-it with the same workspace name, or use marimo's file browser, since the
-process's working directory is the workspace.
+To work on another notebook in the same workspace, start another service with
+that notebook and the same workspace name, or open it in marimo's file browser.
 
 ## How it works
 
-**Routing.** The public route is `/services/{job_id}/` and Traefik strips that
-prefix before the request reaches the pod, so marimo is served at its own root
-with no `--base-url`. Its HTML references assets relatively as `./assets/...`
-and its frontend derives every API and websocket URL from `document.baseURI`,
-so the prefix survives the round trip. If a future marimo changes that,
-`--base-url` plus a matching ingress rule is the fallback.
+**Routing.** Requests to the service are routed through `/services/{job_id}/`,
+and Traefik removes that prefix before the request reaches the service. This
+means marimo is served from its own root and doesn't need `--base-url`. marimo's
+HTML uses relative paths like `./assets/...` and its frontend builds all API
+and websocket URLs from `document.baseURI`, so the prefix is kept in the
+browser. If a future version of marimo changes this, you can set `--base-url`
+and add a matching ingress rule.
 
-**Auth.** `auth="session"` gates the route at the ingress, so logged-in project
-members get in from the web app and nobody else does. marimo's own token auth
-is turned off rather than layered on top, where it would be a second password
-prompt on an already authenticated route.
+**Authentication.** The recipe sets `auth="session"`, so the ingress only lets
+in project members who are logged in to the web app. marimo's own token
+authentication is turned off, because it would ask users for a second password
+after they're already authenticated.
 
-**Persistence.** `workspace.py` resolves `{__nfs__}/marimo/<workspace>/` from
-`ELLF_BUILTIN_PATH_NFS`, which the broker sets on every recipe pod and mounts
-read-write. The notebook asset's file is copied in once, on first start.
-After that the copy is the source of truth and is never overwritten, which is
-what makes browser edits survive a restart, an image rebuild and a republish.
-Registered notebooks live beside the workspaces in `{__nfs__}/marimo/starters/`,
-because a source is not owned by any workspace that copies it.
+**Persistence.** `workspace.py` resolves `{__nfs__}/marimo/<workspace>/` using
+`ELLF_BUILTIN_PATH_NFS`, which the broker sets on every recipe pod. The
+notebook asset's file is copied into the workspace the first time the service
+starts. After that, the working copy is never overwritten, so changes made in
+the browser are kept when the service restarts, the image is rebuilt or the
+package is published again. Registered notebooks are stored in
+`{__nfs__}/marimo/starters/`, next to the workspaces, because they don't belong
+to any one workspace.
 
-**Credentials.** The pod's environment already carries
-`PRODIGY_CONFIG_OVERRIDES` for the database connection and `ELLF_PAM_*` for a
-short-lived token belonging to the user who started the job. The recipe passes
-the whole environment through to the marimo subprocess, which is why the
-notebook's first cells need no configuration.
+**Credentials.** The service's environment already includes
+`PRODIGY_CONFIG_OVERRIDES` with the database connection and `ELLF_PAM_*` with a
+short-lived token for the user who started the service. The recipe passes the
+whole environment on to the marimo process, so the notebooks don't need any
+configuration.
 
 ## Develop locally
 
-Install the package and the development requirements. `requirements.in` lists
-only what the cluster image lacks, so the recipes SDK and pytest live in
-`requirements-dev.in` instead and are not pulled in by `pip install -e .`.
+Install the package and the development requirements. `requirements.in` only
+lists what the cluster image doesn't include, so the recipes SDK and pytest are
+listed in `requirements-dev.in` and aren't installed by `pip install -e .`.
 
 ```bash
 pip install -e .
 pip install -r requirements-dev.in
 ```
 
-Work on a starter notebook directly. `ELLF_MARIMO_ROOT` keeps the workspace out
-of the checkout.
+To edit one of the included notebooks, open it with marimo.
 
 ```bash
-ELLF_MARIMO_ROOT=/tmp/nb marimo edit ellf_notebook/notebooks/dataset_explorer.py
+marimo edit ellf_notebook/notebooks/dataset_explorer.py
 ```
 
-The notebook falls back to bundled sample rows when there is no Prodigy
-database and no job token, and says so in a banner on the page, so it opens and
-renders on a laptop.
+When you run a notebook locally, there's no Prodigy database or job token, so
+the notebooks can't read any datasets. Instead, they show an error that
+explains why the dataset couldn't be read and how to fix it. To read real
+annotations locally, set `PRODIGY_CONFIG_OVERRIDES` or a `prodigy.json` to
+point Prodigy to a database you can reach.
 
-To see the service-creation form the recipe generates, without running it.
+To see the form the recipe generates for creating a service, without starting
+it, use `ellf-dev preview`.
 
 ```bash
 ellf-dev preview marimo_notebook
 ```
 
-`preview` renders the form and prints the arguments it would submit. It never
-calls the recipe, so nothing starts. To see the recipe actually do its job,
-publish it to a cluster, where the dataset argument resolves to a real dataset
-and the notebook reads real annotations.
+`ellf-dev preview` shows the form and prints the arguments it would submit. It
+never calls the recipe, so nothing is started. To test the recipe itself,
+publish it to your cluster.
 
-Editing a starter changes what new workspaces get. Editing in the browser
-changes only that workspace.
+If you edit one of the included notebooks, register it again to use the new
+version in new workspaces. Changes you make in the browser only affect that
+workspace.
+
+To run the tests, use pytest.
 
 ```bash
 python -m pytest tests -q
 ```
 
-## Limits worth knowing
+## Limitations
 
-- One notebook per service and one marimo kernel per notebook. This is a
-  workbench for a person rather than a multi-tenant compute service. Two people
-  editing the same workspace at the same time will fight over the file.
-- A notebook's work is lost when the service stops, and only the file persists,
-  not the kernel state. Write anything you want to keep to the workspace
-  directory, which is on NFS.
-- `requirements.in` lists only what the base image lacks. The cluster-side
-  install is `pip install --target`, which ignores the image's own
-  site-packages, and the broker then tars and gzips the whole result into a
-  layer, so every redundant line costs build time and image size. That is why
-  `ellf-recipes-sdk` sits in `requirements-dev.in`, because the base image has
-  it and listing it would pull in spacy, boto3, google-cloud and psycopg2 for
-  nothing. Same reasoning for `pandas` and `altair`.
-- Layer assembly happens inside the broker's event loop, and the broker's
-  liveness probe allows about 90 seconds of unresponsiveness. A fat requirement
-  set can block it long enough to get the broker restarted mid-publish, which
-  shows up as a read timeout or a 503 from `POST /api/v1/envs/builds`. Keeping
-  the requirement set lean is not just tidiness.
+- Each service runs one notebook with one marimo kernel. The service is meant
+  for one person at a time, not for many users sharing compute. If two people
+  edit the same workspace at the same time, their changes can overwrite each
+  other.
+- When the service stops, only the notebook file is kept, not the kernel state.
+  To keep results, write them to the workspace directory, which is on NFS.
+- `requirements.in` only lists what the base image doesn't include. The cluster
+  installs the requirements with `pip install --target`, which ignores the
+  packages already in the image, and the broker then packs the result into an
+  image layer. Every extra requirement adds build time and increases the image
+  size. That's why `ellf-recipes-sdk` is listed in `requirements-dev.in`
+  instead. The base image already includes it, and listing it here would also
+  install spaCy, boto3, google-cloud and psycopg2. The same applies to `pandas`
+  and `altair`.
+- The broker builds the image layer in its event loop, and its liveness probe
+  allows about 90 seconds without a response. A large set of requirements can
+  block the broker long enough for it to be restarted while publishing, which
+  shows up as a read timeout or a 503 error from `POST /api/v1/envs/builds`.
+  Keep the requirements as small as possible to avoid this.

@@ -1,16 +1,12 @@
 """The notebook asset type.
 
-A notebook is a plain ``.py`` file, so making it an asset costs nothing and
-buys a lot. The service-creation form gets a real picker listing the notebooks
-that exist on the cluster, rather than a dropdown frozen into the package at
-publish time, and anyone can add to that list by registering an asset without
-republishing anything.
+Registering notebooks as assets means the service form lists the notebooks on
+your cluster, instead of a fixed list from the package. To add a notebook, you
+register it as an asset, without publishing the package again.
 
-An asset is the *source*. The service copies it into a workspace on first use
-and marimo edits the copy, so two people opening the same notebook do not
-write over each other. That split is the same one the package used to have
-between bundled starters and workspace copies, with the platform supplying the
-sources instead of the wheel.
+The asset is the source of the notebook. The service copies it into a
+workspace the first time it's opened and marimo edits the copy, so people
+using different workspaces don't overwrite each other's changes.
 """
 
 from typing import ClassVar, Literal
@@ -22,16 +18,15 @@ from ellf_recipes_sdk import Asset, ellf_type
     "notebook",
     title="Notebook",
     description=(
-        "Which notebook to open. Pick one registered on your cluster, or "
-        "register your own and it shows up here."
+        "The notebook to open. Choose a notebook registered on your cluster. "
+        "Notebooks you register are also listed here."
     ),
 )
 class Notebook(Asset[Literal["notebook"]]):
     """A marimo notebook registered on the cluster.
 
-    ``path`` points at the ``.py`` file on shared storage. The file is the
-    source that gets copied into a workspace, never the thing edited in the
-    browser.
+    ``path`` is the ``.py`` file on shared storage. It's copied into a
+    workspace and never edited directly.
     """
 
     # fmt: off
@@ -40,5 +35,5 @@ class Notebook(Asset[Literal["notebook"]]):
 
     @property
     def filename(self) -> str:
-        """Name the working copy takes inside a workspace."""
+        """The file name of the working copy in a workspace."""
         return self.path.rsplit("/", 1)[-1]
